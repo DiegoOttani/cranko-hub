@@ -1,0 +1,136 @@
+# CrankoHub — próximos updates
+
+Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes para começar sem precisar redescobrir o projeto.
+
+## Como o projeto funciona (referência rápida)
+
+- **Tecnologia:** WPF + Blazor Hybrid (`BlazorWebView`), .NET 10. As telas são `.razor` em `Pages/`, a lógica fica em C# em `Services/` e os modelos em `Models/`.
+- **Dados:** um único arquivo JSON em `%LocalAppData%\CrankoHub\dados.json`, gerenciado por `Services/ArmazenamentoService.cs`.
+  - Raiz: `EstadoApp` (`Models/EstadoApp.cs`).
+  - Campo novo exige três passos:
+    - adicionar no modelo;
+    - tratar no `Normalizar` (`??= []`, remover nulos, gerar ids faltando);
+    - se fizer sentido, incluir nos dados de exemplo (`Exemplo`) e nos contadores de `Pages/Dados.razor`.
+  - Campos novos devem ser opcionais, para backups antigos continuarem importando.
+- **Gráficos:** `Components/GraficoLinha.cs` e `Components/GraficoBarras.cs` (dados em `Models/Graficos.cs`: `BarraDado`, `SerieLinha`, `FormatoNumero`).
+- **Formatação pt-BR:** `Services/Formatacao.cs` (`Money`, `Num`, `Pf` para ler "1.234,56", `DataBR`, `MesLabel`, `UltimosMeses`, `Plural`, `Hoje`).
+- **Alertas:** `Services/Alertas.cs` é a fonte única do card "Precisa de atenção" do Início e das notificações do Windows (`Services/AvisosService.cs`).
+- **Menu:** `Layout/LayoutPrincipal.razor` (NavLink + `TituloDaPagina`). Ícones em `Components/Icones.cs`.
+- **Publicar o .exe:** `dotnet publish -c Release -p:PublishProfile=win-x64` gera `publicar\CrankoHub.exe`.
+
+---
+
+## 1. Finanças (só despesas) — próximo da fila
+
+**Objetivo:** uma tela que mostra para onde vai o dinheiro no mês. Ela junta os gastos lançados à mão com os que o app já conhece (combustível, manutenção, documentos do carro e assinaturas), sem precisar digitar nada duas vezes.
+
+**Decisões já tomadas:**
+- Só **despesas**: sem receitas e sem saldo.
+- Os gastos das outras áreas entram **sozinhos**, como lançamentos automáticos, só para leitura.
+
+### Modelo
+- `Models/Despesa.cs`: `Id`, `Data` (DateOnly), `Descricao`, `Valor` (double), `Categoria`, `Pagamento?` (cartão, Pix...), `Obs?`.
+- `Models/EstadoApp.cs`: nova propriedade `Financas` (classe `DadosFinancas`) com `List<Despesa> Despesas` e `double? OrcamentoMensal` (limite de gastos do mês, opcional).
+- `ArmazenamentoService`:
+  - no `Normalizar`: `s.Financas ??= new()`, `Despesas ??= []`, remover nulos e gerar ids;
+  - no `Exemplo`: ~20 despesas espalhadas nos últimos 6 meses (Mercado, Restaurante, Farmácia, Lazer...) e um orçamento de exemplo.
+
+### Cálculos — `Services/FinancasCalculos.cs`
+- `record Lancamento(DateOnly Data, string Descricao, double Valor, string Categoria, string Origem, string? Link, Despesa? Despesa)`.
+  - Valores de `Origem`: `"manual"`, `"combustivel"`, `"manutencao"`, `"documento"`, `"assinatura"`.
+  - `Link` é a tela de onde o lançamento vem: `carro?aba=abastecimentos&veiculo=...`, `carro?aba=manutencao&veiculo=...`, `carro?aba=documentos&veiculo=...` ou `assinaturas`.
+- `DoMes(EstadoApp d, int ano, int mes)` junta:
+  - despesas manuais do mês;
+  - abastecimentos com `Valor` → categoria **"Carro · Combustível"**, descrição tipo "Gasolina · 36,5 L · {veículo}";
+  - manutenções com `Valor` → **"Carro · Manutenção"** (descrição: nome do tipo + descrição);
+  - documentos **pagos** com `Valor` → **"Carro · Documentos"**, usando o `Vencimento` como data;
+  - cobranças das assinaturas **ativas** no mês → **"Assinaturas"**.
+- **Cobranças de assinatura no mês:** cuidado aqui.
+  - Hoje `AssinaturasCalculos` só calcula para frente (`ProximaCobranca`, `CobrancasAte`). É preciso uma função nova `CobrancasNoPeriodo(Assinatura a, DateOnly inicio, DateOnly fim)`.
+  - Ela parte de `a.Vencimento` e anda para trás e para frente pelo ciclo, com `CicloCobranca.Buscar(a.Ciclo).Avancar(a.Vencimento, n)` e `n` negativo/positivo.
+  - O modelo `Assinatura` não tem data de início, então meses passados são **estimados**. A tela deve mostrar "estimado pelo ciclo" nesses lançamentos.
+  - Assinaturas canceladas (`Ativa = false`) ficam de fora.
+- `PorCategoria(List<Lancamento>)` → `List<BarraDado>` ordenada do maior para o menor.
+- `Mensal(EstadoApp d, int meses = 12)` → total por mês (`BarraDado`, rótulo com `Formatacao.MesLabel`).
+- `CategoriasSugeridas`: Mercado, Restaurante, Delivery, Farmácia, Saúde, Casa, Contas, Educação, Lazer, Roupas, Presentes, Pets, Transporte, Outros.
+
+### Tela — `Pages/Financas.razor` (`@page "/financas"`)
+- **Menu:** item "Finanças" entre Assinaturas e o separador, com ícone novo em `Icones.cs` (carteira ou cifrão). Adicionar `"financas" => "Finanças"` no `TituloDaPagina` do layout.
+- **Seletor de mês:** `‹ outubro 2026 ›`. O mês escolhido fica guardado num campo `static`, como `_periodo` em `Pages/CarroAbas/AbaConsumo.razor`.
+- **KPIs** (classe `kpis`):
+  - total do mês;
+  - comparação com o mês anterior (componente `Delta`, com `BomQuandoCai = true`);
+  - média dos últimos 6 meses;
+  - orçamento restante com barra `progress` (se `OrcamentoMensal` definido; senão, um link "definir orçamento");
+  - maior categoria.
+- **Formulário "Nova despesa"**, seguindo o padrão do formulário de `Pages/Assinaturas.razor`:
+  - Data, Descrição*, Valor* (texto lido com `Pf`), Categoria (input com `datalist` de `CategoriasSugeridas` + categorias já usadas), Forma de pagamento, Observação;
+  - edição e cancelar, como nas outras telas;
+  - campo para definir o orçamento mensal, numa linha separada ou num pequeno diálogo.
+- **Gráficos:**
+  - "Gastos por categoria" (`GraficoBarras` com `PorCategoria`);
+  - "Gasto mensal" dos últimos 12 meses (`Mensal`).
+- **Tabela do mês:**
+  - filtro em chips: Todos / Manuais / Automáticos;
+  - colunas: Data, Descrição, Categoria, Origem (badge), Pagamento, Valor;
+  - lançamentos manuais têm editar/excluir, com confirmação via `IDialogoService.Confirmar`;
+  - os automáticos têm um link "ver" que abre a tela de origem (`<a href="@Link">`), sem editar/excluir.
+
+### Integrações
+- **Início (`Pages/Inicio.razor`):** link-card "Finanças" com gasto do mês, comparação com o mês anterior e maior categoria, junto dos cards de Assinaturas/Dieta/Carro.
+- **Alertas (opcional):** em `Services/Alertas.cs`, avisar quando o gasto do mês passar de 90% do `OrcamentoMensal`. A chave deve ser `orcamento:{ano}-{mes}`, para notificar uma vez por dia.
+- **`Pages/Dados.razor`:**
+  - contador "Despesas";
+  - incluir `d.Financas.Despesas.Count` no `temDados` do "Carregar exemplo";
+  - texto do "Apagar tudo" citando as despesas.
+
+### Como testar
+1. `dotnet build` sem erros.
+2. Carregar os dados de exemplo e conferir que o total do mês bate com a soma de: manuais + abastecimentos com valor + manutenções + documentos pagos + cobranças de assinaturas do mês.
+3. Trocar de mês e conferir o comparativo com o mês anterior.
+4. Criar, editar e excluir uma despesa manual.
+
+---
+
+## 2. Contas a pagar
+
+- **O que é:** luz, água, internet, aluguel, cartão de crédito. Parecido com Assinaturas, mas o **valor muda todo mês** e cada mês precisa ser marcado como **pago**.
+- **Modelo:**
+  - `ContaFixa` (nome, dia de vencimento, categoria, valor médio);
+  - `PagamentoConta` (conta, mês/ano, valor, pago em).
+- **Integrações:**
+  - entrar nos alertas ("Conta de luz vence amanhã");
+  - entrar nas Finanças como origem `"conta"`.
+
+## 3. Exportar para Excel/CSV
+
+- Botões "Exportar CSV" nas tabelas deç abastecimentos, manutenões, documentos, assinaturas e (depois) despesas.
+- Usar `;` como separador e números no formato pt-BR, para abrir certo no Excel brasileiro. Salvar via `SaveFileDialog`, como em `DialogoService.SalvarBackup`.
+
+## 4. Treinos
+
+- Registro de academia: exercício, carga, séries e repetições, por dia.
+- Gráfico de evolução da carga por exercício e volume semanal. Conversa com a Dieta (peso × força).
+
+## 5. Hábitos
+
+- Checklist diário (água, leitura, treino, dormir cedo...), com sequência de dias e um mapa de calor do ano.
+- Alerta à noite se o checklist do dia não foi preenchido.
+
+## 6. Saúde -> IMPORTANTE POREM AINDA MUITO CEDO PARA FAZER
+
+- Remédios com horário (notificação pela bandeja), consultas e exames com data.
+- Resultados de exames ao longo do tempo (ex.: colesterol, glicemia) em gráfico de linha.
+
+## 7. Entretenimento -> PROXIMO A SER FEITO 26-10-2026
+
+- Seria como se fosse um letterbox proprio, podendo colocar o que assistiu , quando, nota. Não precisamos de comentarios pois é um projeto offline.
+- As categorias serão: Filmes, Jogos, Animações, Livros, Series, Animes e por ai vai, cada um separado por sua categoria.
+- Ver se existe alguma API que nos forneça informações sobre o que foi assistido, para não precisar digitar tudo manualmente. Alem da imagem do filme.
+- Na hora de exibir a biblioteca, é como se fosse uma estante mesmo, com a capa do filme, jogo, livro, etc. E ao clicar na capa, abriria uma tela com as informações do que foi assistido. E na capa a sua nota.
+
+## Pendências de teste do que já existe
+
+- **Iniciar com o Windows** (Dados & backup → Aplicativo): conferir se a entrada aparece em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` e se o app abre na bandeja ao ligar o PC.
+- **Notificações:** conferir a aparência no Windows e se o clique abre a tela certa.
+- **Diálogos:** "Restaurar" um backup automático e "Marcar como pago" em Documentos (incluindo a pergunta de criar o do próximo ano).

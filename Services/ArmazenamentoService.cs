@@ -68,15 +68,18 @@ public class ArmazenamentoService
 
     public void Resetar()
     {
-        var tema = Dados.Tema;
+        var (tema, config) = (Dados.Tema, Dados.Config);
         Dados = Novo();
         Dados.Tema = tema;
+        Dados.Config = config;
         Salvar();
     }
 
     public void CarregarExemplo()
     {
+        var config = Dados.Config;
         Dados = Exemplo(Dados.Tema);
+        Dados.Config = config;
         Salvar();
     }
 
@@ -98,7 +101,10 @@ public class ArmazenamentoService
             throw new InvalidDataException("Arquivo inválido.");
         }
 
+        // As configurações (pasta de backup etc.) são deste computador: não vêm do arquivo
+        var config = Dados.Config;
         Dados = Normalizar(estado ?? throw new InvalidDataException("Arquivo inválido."));
+        Dados.Config = config;
         Salvar();
     }
 
@@ -146,18 +152,23 @@ public class ArmazenamentoService
         s.Carro.Abastecimentos.RemoveAll(a => a is null);
         s.Carro.Manutencoes ??= []; // backups antigos (e do app web) não têm manutenções
         s.Carro.Manutencoes.RemoveAll(m => m is null);
+        s.Carro.Documentos ??= [];
+        s.Carro.Documentos.RemoveAll(x => x is null);
         s.Carro.Veiculos ??= [];
         s.Carro.Veiculos.RemoveAll(v => v is null);
         if (s.Carro.Veiculos.Count == 0)
             s.Carro.Veiculos = Novo().Carro.Veiculos;
         if (!s.Carro.Veiculos.Any(v => v.Id == s.Carro.Ativo))
             s.Carro.Ativo = s.Carro.Veiculos[0].Id;
+        s.Config ??= new Configuracoes();
+        s.Config.AvisosEnviados ??= [];
         s.Assinaturas ??= []; // backups antigos (e do app web) não têm assinaturas
         s.Assinaturas.RemoveAll(a => a is null);
 
         foreach (var r in s.Dieta.Registros.Where(r => string.IsNullOrEmpty(r.Id))) r.Id = NovoId();
         foreach (var a in s.Carro.Abastecimentos.Where(a => string.IsNullOrEmpty(a.Id))) a.Id = NovoId();
         foreach (var m in s.Carro.Manutencoes.Where(m => string.IsNullOrEmpty(m.Id))) m.Id = NovoId();
+        foreach (var x in s.Carro.Documentos.Where(x => string.IsNullOrEmpty(x.Id))) x.Id = NovoId();
         foreach (var a in s.Assinaturas.Where(a => string.IsNullOrEmpty(a.Id))) a.Id = NovoId();
         return s;
     }
@@ -230,6 +241,18 @@ public class ArmazenamentoService
             Manut("oleo", 95, 299.90, "Óleo 5W30 sintético + filtro de óleo", "Auto Center Silva"),
             Manut("pneus", 60, 80.00, "Rodízio dos pneus", "Pneus & Cia"),
             Manut("bateria", 700, 520.00, "Bateria 60 Ah", "Loja de baterias"),
+        ];
+
+        DocumentoCarro Doc(string tipo, int diasAteVencer, double? valor, string? descricao, bool pago = false) =>
+            new() { Id = NovoId(), VeiculoId = tipo == "cnh" ? null : vid, Tipo = tipo, Vencimento = hoje.AddDays(diasAteVencer), Valor = valor, Descricao = descricao, Pago = pago };
+        s.Carro.Documentos =
+        [
+            Doc("ipva", -60, 812.40, "Parcela 1/3", pago: true),
+            Doc("ipva", -30, 812.40, "Parcela 2/3", pago: true),
+            Doc("ipva", 5, 812.40, "Parcela 3/3"),
+            Doc("licenciamento", 45, 160.22, null),
+            Doc("seguro", 120, 2890.00, "Porto Seguro · franquia R$ 3.500"),
+            Doc("cnh", 800, null, "Categoria B"),
         ];
 
         Assinatura Assin(string nome, double valor, string ciclo, int diasAteVencer, string categoria, string pagamento, bool ativa = true) =>

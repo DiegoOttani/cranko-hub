@@ -33,6 +33,11 @@
         .Take(6)
         .ToList();
 
+    var alertas = Alertas.Gerar(d, Hoje);
+    var assinAtivas = d.Assinaturas.Where(a => a.Ativa).ToList();
+    var custoAssin = assinAtivas.Sum(AssinaturasCalculos.PorMes);
+    var proximasCobrancas = AssinaturasCalculos.CobrancasAte(assinAtivas, Hoje, 30);
+
     // Mini-gráficos: últimos 90 dias
     var corte = Hoje.AddDays(-90);
 }
@@ -42,6 +47,60 @@
     <h1>@(saudacao)!</h1>
     <p>Seu painel pessoal de parâmetros. Escolha uma área para registrar e acompanhar sua evolução.</p>
 </section>
+
+<div class="grid-2">
+    <section class="card">
+        <div class="card-head"><div><h2>Precisa de atenção</h2><p>@(alertas.Count > 0 ? $"{alertas.Count} {Plural(alertas.Count, "item", "itens")} para resolver" : "Lembretes de todas as áreas")</p></div></div>
+        @if (alertas.Count > 0)
+        {
+            <ul class="activity alertas">
+                @foreach (var a in alertas)
+                {
+                    <li @key="a.Chave">
+                        <a href="@a.Link">
+                            <span class="a-icon">@a.Icone</span>
+                            <div class="a-text">@a.Titulo<small>@a.Detalhe</small></div>
+                            <span class="badge @a.Classe">@a.Badge</span>
+                        </a>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <div class="chart-empty"><span>Tudo em dia por aqui. ✓</span></div>
+        }
+    </section>
+    <a class="card link-card" href="assinaturas">
+        <div class="link-head">
+            <span class="link-icon">@Icones.Assinaturas</span>
+            <div><h2>Assinaturas</h2><p>Serviços recorrentes e cobranças</p></div>
+            <span class="go">@Icones.Seta</span>
+        </div>
+        <div class="mini-stats">
+            <div><span>Custo mensal</span><b>@Money(custoAssin)</b></div>
+            <div><span>Ativas</span><b>@assinAtivas.Count</b></div>
+            <div><span>Próx. 30 dias</span><b>@Money(proximasCobrancas.Sum(c => c.Assinatura.Valor))</b></div>
+        </div>
+        @if (proximasCobrancas.Count > 0)
+        {
+            <ul class="activity">
+                @foreach (var (a, data) in proximasCobrancas.Take(4))
+                {
+                    var (texto, classe) = AssinaturasCalculos.Prazo(data.DayNumber - Hoje.DayNumber);
+                    <li>
+                        <div class="a-text">@a.Nome<small>@Money(a.Valor) · @DataBR(data)</small></div>
+                        <span class="badge @classe">@texto</span>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <div class="chart-empty"><span>Nenhuma cobrança nos próximos 30 dias.</span></div>
+        }
+    </a>
+</div>
 
 <div class="grid-2">
     <a class="card link-card" href="dieta">

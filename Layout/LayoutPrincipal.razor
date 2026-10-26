@@ -3,6 +3,8 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject ArmazenamentoService Store
+@inject BackupService Backup
+@inject NavegacaoService Navegacao
 
 <div class="app @(_menuAberto ? "menu-open" : "")">
     <aside class="sidebar">
@@ -54,12 +56,17 @@
     {
         _caminho = CaminhoAtual();
         Nav.LocationChanged += AoNavegar;
+        Navegacao.AoNavegar += AbrirPagina;
     }
+
+    // Pedido vindo de fora do Blazor (ex.: clique numa notificação)
+    private void AbrirPagina(string link) => _ = InvokeAsync(() => Nav.NavigateTo(link));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-            await JS.InvokeVoidAsync("crankohub.aplicarTema", Store.Dados.Tema);
+        if (!firstRender) return;
+        await JS.InvokeVoidAsync("crankohub.aplicarTema", Store.Dados.Tema);
+        Backup.ExecutarSeNecessario();
     }
 
     private string CaminhoAtual() => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
@@ -78,5 +85,9 @@
         Store.Salvar();
     }
 
-    public void Dispose() => Nav.LocationChanged -= AoNavegar;
+    public void Dispose()
+    {
+        Nav.LocationChanged -= AoNavegar;
+        Navegacao.AoNavegar -= AbrirPagina;
+    }
 }

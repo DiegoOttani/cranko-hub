@@ -15,6 +15,7 @@
     var kmDia = ManutencaoCalculos.KmPorDia(list, hoje);
     var lembretes = ManutencaoCalculos.Lembretes(manut, odoAtual, kmDia, hoje);
     var alertas = lembretes.Count(s => s.Vencida || s.EmBreve);
+    var docsAtencao = DocumentosCalculos.DoVeiculo(c, v.Id).Where(x => DocumentosCalculos.PrecisaAtencao(x, hoje)).ToList();
 }
 
 <div class="page-head">
@@ -42,6 +43,7 @@
             @rotulo
             @if (chave == "abastecimentos" && list.Count > 0) { <span class="tab-count">@list.Count</span> }
             @if (chave == "manutencao" && alertas > 0) { <span class="tab-count alerta" title="Manutenções vencidas ou próximas">@alertas</span> }
+            @if (chave == "documentos" && docsAtencao.Count > 0) { <span class="tab-count alerta" title="Documentos vencidos ou vencendo em 30 dias">@docsAtencao.Count</span> }
         </button>
     }
 </nav>
@@ -56,6 +58,9 @@
         break;
     case "calculadoras":
         <AbaCalculadoras @key="v.Id" Veiculo="v" />
+        break;
+    case "documentos":
+        <AbaDocumentos @key="v.Id" Veiculo="v" Alterado="StateHasChanged" />
         break;
     case "manutencao":
         <AbaManutencao @key="@(v.Id + _tipoNovo)" Veiculo="v" TipoInicial="@_tipoNovo" Alterado="StateHasChanged" />
@@ -103,7 +108,7 @@
         <div class="grid-2">
             <section class="card">
                 <div class="card-head">
-                    <div><h2>Manutenção</h2><p>O que está para vencer neste veículo.</p></div>
+                    <div><h2>Manutenção</h2><p>Manutenção e documentos que estão para vencer.</p></div>
                     <button class="btn sm" type="button" @onclick="@(() => Abrir("manutencao"))">Ver tudo</button>
                 </div>
                 <div class="lembretes uma-coluna">
@@ -122,9 +127,18 @@
                         </div>
                     }
                 </div>
-                @if (outros.Count > 0)
+                @if (outros.Count > 0 || docsAtencao.Count > 0)
                 {
                     <ul class="activity">
+                        @foreach (var x in docsAtencao)
+                        {
+                            var (texto, classe) = DocumentosCalculos.Situacao(x, hoje);
+                            <li>
+                                <span class="a-icon">@Icones.Dados</span>
+                                <div class="a-text">@TipoDocumento.NomeDe(x.Tipo)<small>@DataBR(x.Vencimento)@(x.Valor is not null ? $" · {Money(x.Valor)}" : "")@(x.Descricao is not null ? $" · {x.Descricao}" : "")</small></div>
+                                <span class="badge @classe">@texto</span>
+                            </li>
+                        }
                         @foreach (var s in outros)
                         {
                             var (texto, classe) = s.Situacao;
@@ -182,6 +196,7 @@
         ("consumo", "Consumo"),
         ("calculadoras", "Calculadoras"),
         ("manutencao", "Manutenção"),
+        ("documentos", "Documentos"),
     ];
 
     // Aba aberta, mantida enquanto o app estiver aberto
@@ -190,7 +205,10 @@
     /// <summary>Permite abrir uma aba direto pelo link (ex.: carro?aba=manutencao).</summary>
     [SupplyParameterFromQuery(Name = "aba")] public string? AbaInicial { get; set; }
 
-    private string? _abaDoLink;
+    /// <summary>Permite abrir um veículo direto pelo link (ex.: carro?veiculo=abc123).</summary>
+    [SupplyParameterFromQuery(Name = "veiculo")] public string? VeiculoDoLink { get; set; }
+
+    private string? _abaDoLink, _veiculoDoLink;
     private string? _tipoNovo; // tipo pré-selecionado ao abrir a manutenção por um atalho
     private DialogoTexto _dialogoNome = default!;
 
@@ -199,6 +217,11 @@
     protected override void OnParametersSet()
     {
         // Só quando o link muda, para não desfazer a aba escolhida a cada nova renderização
+        if (VeiculoDoLink != _veiculoDoLink)
+        {
+            _veiculoDoLink = VeiculoDoLink;
+            if (Dados.Veiculos.Any(v => v.Id == VeiculoDoLink)) AtivarVeiculo(VeiculoDoLink!);
+        }
         if (AbaInicial == _abaDoLink) return;
         _abaDoLink = AbaInicial;
         if (Abas.Any(a => a.Chave == AbaInicial)) _aba = AbaInicial!;
@@ -251,7 +274,9 @@
         var v = CarroCalculos.VeiculoAtivo(Dados);
         var qtdAbast = Dados.Abastecimentos.Count(a => a.VeiculoId == v.Id);
         var qtdManut = Dados.Manutencoes.Count(m => m.VeiculoId == v.Id);
-        if (!Dialogo.Confirmar($"Excluir \"{v.Nome}\" com seus {qtdAbast} abastecimentos e {qtdManut} manutenções?")) return;
+        var qtdDocs = Dados.Documentos.Count(x => x.VeiculoId == v.Id);
+        if (!Dialogo.Confirmar($"Excluir \"{v.Nome}\" com seus {qtdAbast} abastecimentos, {qtdManut} manutenções e {qtdDocs} documentos?")) return;
+        Dados.Documentos.RemoveAll(x => x.VeiculoId == v.Id);
         Dados.Abastecimentos.RemoveAll(a => a.VeiculoId == v.Id);
         Dados.Manutencoes.RemoveAll(m => m.VeiculoId == v.Id);
         Dados.Veiculos.Remove(v);

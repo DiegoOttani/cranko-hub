@@ -420,3 +420,18 @@ tr.inativa td b { color: var(--text-2); font-weight: 600; }
   .form-grid.cols-4 { grid-template-columns: minmax(0, 1fr); }
   .kpis.k6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ===== Dados: backup automático ===== */
+.linha-pasta { display: flex; gap: 8px; }
+.linha-pasta input { flex: 1; min-width: 0; }
+.field > b { height: 38px; display: flex; align-items: center; }
+
+/* ===== Início: precisa de atenção ===== */
+.alertas li { padding: 0; }
+.alertas a { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 6px; margin: 0 -6px; border-radius: 10px; color: inherit; text-decoration: none; }
+.alertas a:hover { background: var(--surface-2); }
+.alertas .badge { white-space: nowrap; }
+
+/* ===== Dados: opções do aplicativo ===== */
+.opcoes { display: flex; flex-direction: column; gap: 2px; }
+.opcoes .check { height: 34px; align-self: start; }

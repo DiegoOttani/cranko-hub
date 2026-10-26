@@ -36,6 +36,16 @@ public class DialogoService : IDialogoService
         return Exibir(() => dialogo.ShowDialog(Application.Current.MainWindow) == true ? dialogo.FileName : null);
     }
 
+    public string? EscolherPasta(string titulo, string? pastaInicial)
+    {
+        var dialogo = new OpenFolderDialog
+        {
+            Title = titulo,
+            InitialDirectory = pastaInicial is not null && Directory.Exists(pastaInicial) ? pastaInicial : "",
+        };
+        return Exibir(() => dialogo.ShowDialog(Application.Current.MainWindow) == true ? dialogo.FolderName : null);
+    }
+
     // Os diálogos do WPF precisam rodar na thread da interface.
     private static string? Exibir(Func<string?> abrir) =>
         Application.Current.Dispatcher.Invoke(abrir);

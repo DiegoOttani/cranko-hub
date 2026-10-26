@@ -7,6 +7,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- Só para o ícone na bandeja (NotifyIcon) -->
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>CrankoHub</RootNamespace>
 
     <!-- Metadados do aplicativo -->
@@ -30,6 +32,9 @@
 
   <ItemGroup>
     <Using Include="System.IO" />
+    <!-- Evita conflito de nomes com o WPF (Application, MessageBox...) -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>

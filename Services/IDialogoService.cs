@@ -13,4 +13,7 @@ public interface IDialogoService
 
     /// <summary>Escolhe um backup .json para importar. Retorna null se cancelar.</summary>
     string? AbrirBackup();
+
+    /// <summary>Escolhe uma pasta. Retorna null se cancelar.</summary>
+    string? EscolherPasta(string titulo, string? pastaInicial);
 }

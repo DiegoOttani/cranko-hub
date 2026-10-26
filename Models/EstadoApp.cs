@@ -16,6 +16,8 @@ public class EstadoApp
     public DadosCarro Carro { get; set; } = new();
 
     public List<Assinatura> Assinaturas { get; set; } = [];
+
+    public Configuracoes Config { get; set; } = new();
 }
 
 public class DadosDieta
@@ -44,4 +46,6 @@ public class DadosCarro
     public List<Abastecimento> Abastecimentos { get; set; } = [];
 
     public List<Manutencao> Manutencoes { get; set; } = [];
+
+    public List<DocumentoCarro> Documentos { get; set; } = [];
 }

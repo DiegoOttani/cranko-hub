@@ -2,9 +2,13 @@
 @inject ArmazenamentoService Store
 @inject ToastService Toast
 @inject IDialogoService Dialogo
+@inject BackupService Backup
+@inject AvisosService Avisos
 
 @{
     var d = Store.Dados;
+    var cfg = d.Config;
+    var backups = Backup.Listar();
 }
 
 <div class="page-head">
@@ -20,9 +24,66 @@
         <div><span>Registros de peso</span><b>@d.Dieta.Registros.Count</b></div>
         <div><span>Abastecimentos</span><b>@d.Carro.Abastecimentos.Count</b></div>
         <div><span>Manutenções</span><b>@d.Carro.Manutencoes.Count</b></div>
+        <div><span>Documentos</span><b>@d.Carro.Documentos.Count</b></div>
         <div><span>Veículos</span><b>@d.Carro.Veiculos.Count</b></div>
         <div><span>Assinaturas</span><b>@d.Assinaturas.Count</b></div>
         <div><span>Tamanho</span><b>@Num(Store.TamanhoKB(), 1) KB</b></div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Backup automático</h2><p>Uma cópia por dia, feita ao abrir o app. Dica: escolha uma pasta do OneDrive ou Google Drive para ter o backup também na nuvem.</p></div>
+        <label class="check"><input type="checkbox" checked="@cfg.BackupAutomatico" @onchange="AlternarAutomatico"> Ativado</label>
+    </div>
+    <div class="form-grid">
+        <div class="field full"><span>Pasta</span>
+            <div class="linha-pasta">
+                <input readonly value="@(cfg.PastaBackup ?? "")" placeholder="nenhuma pasta escolhida">
+                <button class="btn" type="button" @onclick="EscolherPasta">Escolher…</button>
+            </div></div>
+        <label class="field"><span>Manter os últimos</span>
+            <select value="@cfg.BackupsMantidos" @onchange="MudarMantidos">
+                @foreach (var n in new[] { 3, 5, 10, 15, 30 })
+                {
+                    <option value="@n">@n backups</option>
+                }
+            </select></label>
+        <div class="field"><span>Último backup</span><b>@(cfg.UltimoBackup is DateOnly u ? DataBR(u) : "nunca")</b></div>
+    </div>
+    <div class="form-actions">
+        <button class="btn primary" type="button" disabled="@string.IsNullOrWhiteSpace(cfg.PastaBackup)" @onclick="FazerAgora">Fazer backup agora</button>
+    </div>
+    @if (backups.Count > 0)
+    {
+        <div class="table-wrap" style="margin-top:16px">
+            <table>
+                <thead><tr><th>Arquivo</th><th>Salvo em</th><th class="num">Tamanho</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var f in backups)
+                    {
+                        <tr @key="f.Name">
+                            <td>@f.Name</td>
+                            <td>@f.LastWriteTime.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="num">@Num(f.Length / 1024.0, 1) KB</td>
+                            <td><button class="btn sm" type="button" @onclick="() => Restaurar(f)">Restaurar</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="card">
+    <div class="card-head"><div><h2>Aplicativo</h2><p>Ícone na bandeja do Windows (perto do relógio) e notificações dos vencimentos.</p></div></div>
+    <div class="opcoes">
+        <label class="check"><input type="checkbox" checked="@cfg.MinimizarParaBandeja" @onchange="@(e => Mudar(e, v => cfg.MinimizarParaBandeja = v))"> Ao fechar a janela, continuar rodando na bandeja</label>
+        <label class="check"><input type="checkbox" checked="@cfg.Avisos" @onchange="@(e => Mudar(e, v => cfg.Avisos = v))"> Mostrar notificações (manutenção, documentos, assinaturas, peso, backup)</label>
+        <label class="check"><input type="checkbox" checked="@cfg.IniciarComWindows" @onchange="MudarInicioWindows"> Iniciar com o Windows (abre direto na bandeja)</label>
+    </div>
+    <div class="form-actions">
+        <button class="btn" type="button" @onclick="() => Avisos.Verificar(manual: true)">Testar notificação</button>
     </div>
 </section>
 
@@ -57,12 +118,80 @@
         try
         {
             File.WriteAllText(caminho, Store.Exportar());
+            Store.Dados.Config.UltimoBackup = Hoje;
+            Store.Salvar();
             Toast.Ok("Backup salvo.");
         }
         catch (Exception ex)
         {
             Toast.Erro($"Não foi possível salvar o backup: {ex.Message}");
         }
+    }
+
+    private void Mudar(ChangeEventArgs e, Action<bool> aplicar)
+    {
+        aplicar(e.Value is true);
+        Store.Salvar();
+    }
+
+    private void MudarInicioWindows(ChangeEventArgs e)
+    {
+        var ligado = e.Value is true;
+        try
+        {
+            InicializacaoWindows.Aplicar(ligado);
+            Store.Dados.Config.IniciarComWindows = ligado;
+            Store.Salvar();
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível alterar a inicialização: {ex.Message}");
+        }
+    }
+
+    private void AlternarAutomatico(ChangeEventArgs e)
+    {
+        var cfg = Store.Dados.Config;
+        cfg.BackupAutomatico = e.Value is true;
+        if (cfg.BackupAutomatico && string.IsNullOrWhiteSpace(cfg.PastaBackup))
+            cfg.PastaBackup = BackupService.PastaSugerida;
+        Store.Salvar();
+        Backup.ExecutarSeNecessario();
+    }
+
+    private void EscolherPasta()
+    {
+        var cfg = Store.Dados.Config;
+        var pasta = Dialogo.EscolherPasta("Pasta para os backups automáticos", cfg.PastaBackup ?? BackupService.PastaSugerida);
+        if (pasta is null) return;
+        cfg.PastaBackup = pasta;
+        cfg.UltimoBackup = null; // pasta nova: faz o primeiro backup nela
+        Store.Salvar();
+        Backup.ExecutarSeNecessario();
+    }
+
+    private void MudarMantidos(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var n)) return;
+        Store.Dados.Config.BackupsMantidos = n;
+        Store.Salvar();
+    }
+
+    private void FazerAgora()
+    {
+        if (Backup.FazerAgora()) Toast.Ok("Backup feito.");
+    }
+
+    private void Restaurar(FileInfo arquivo)
+    {
+        if (!Dialogo.Confirmar($"Substituir todos os dados atuais pelo backup \"{arquivo.Name}\"?")) return;
+        try
+        {
+            Store.Importar(File.ReadAllText(arquivo.FullName));
+            Toast.Ok("Backup restaurado.");
+        }
+        catch (InvalidDataException ex) { Toast.Erro(ex.Message); }
+        catch (Exception ex) { Toast.Erro($"Não foi possível ler o backup: {ex.Message}"); }
     }
 
     private void Importar()
