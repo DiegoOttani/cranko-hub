@@ -1,0 +1,62 @@
+@* Pergunta um texto curto ao usuário (substitui o prompt() do navegador) *@
+@inject IJSRuntime JS
+
+@if (_resposta is not null)
+{
+    <div class="modal-backdrop" @onclick="Cancelar">
+        <form class="card modal" autocomplete="off" @onclick:stopPropagation="true" @onsubmit="Confirmar">
+            <h2>@_titulo</h2>
+            <label class="field">
+                <span>@_rotulo</span>
+                <input @ref="_campo" @bind="_valor" @bind:event="oninput" maxlength="@MaxCaracteres" @onkeydown="AoTeclar" />
+            </label>
+            <div class="form-actions">
+                <button class="btn" type="button" @onclick="Cancelar">Cancelar</button>
+                <button class="btn primary" type="submit">OK</button>
+            </div>
+        </form>
+    </div>
+}
+
+@code {
+    [Parameter] public int MaxCaracteres { get; set; } = 40;
+
+    private TaskCompletionSource<string?>? _resposta;
+    private ElementReference _campo;
+    private string _titulo = "", _rotulo = "", _valor = "";
+    private bool _focar;
+
+    /// <summary>Mostra o diálogo e devolve o texto digitado (sem espaços nas pontas) ou null se cancelar.</summary>
+    public Task<string?> Perguntar(string titulo, string rotulo, string valorInicial = "")
+    {
+        _resposta?.TrySetResult(null);
+        _resposta = new TaskCompletionSource<string?>();
+        (_titulo, _rotulo, _valor) = (titulo, rotulo, valorInicial);
+        _focar = true;
+        StateHasChanged();
+        return _resposta.Task;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focar) return;
+        _focar = false;
+        await JS.InvokeVoidAsync("crankohub.focar", _campo);
+    }
+
+    private void Confirmar() => Fechar(string.IsNullOrWhiteSpace(_valor) ? null : _valor.Trim());
+
+    private void Cancelar() => Fechar(null);
+
+    private void AoTeclar(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Cancelar();
+    }
+
+    private void Fechar(string? resultado)
+    {
+        var resposta = _resposta;
+        _resposta = null;
+        resposta?.TrySetResult(resultado);
+    }
+}

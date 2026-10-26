@@ -1,0 +1,25 @@
+@* Selo de variação com seta + texto (nunca só cor) *@
+@if (Valor is double v && double.IsFinite(v))
+{
+    if (Math.Abs(v) < 0.5 * Math.Pow(10, -Casas))
+    {
+        <span class="delta neutral">● estável</span>
+    }
+    else
+    {
+        var sobe = v > 0;
+        var bom = sobe != BomQuandoCai;
+        <span class="delta @(bom ? "good" : "bad")">@(sobe ? "▲ +" : "▼ ")@Num(v, Casas)@Unidade</span>
+    }
+}
+
+@code {
+    [Parameter] public double? Valor { get; set; }
+
+    [Parameter] public string Unidade { get; set; } = "";
+
+    [Parameter] public int Casas { get; set; } = 1;
+
+    /// <summary>Se true, valores negativos aparecem em verde (ex.: peso caindo).</summary>
+    [Parameter] public bool BomQuandoCai { get; set; } = true;
+}

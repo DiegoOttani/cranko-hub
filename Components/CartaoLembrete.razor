@@ -1,0 +1,52 @@
+@* Situação de um lembrete de manutenção: quando fazer de novo, quanto do intervalo já passou e o último serviço *@
+
+@{
+    var s = Status;
+    var (texto, classe) = s.Situacao;
+    var u = s.Ultima;
+}
+
+<div class="lembrete @classe @(Destaque ? "destaque" : "")">
+    <div class="lembrete-head">
+        <b>@s.Tipo.Nome</b>
+        <span class="badge @classe">@texto</span>
+    </div>
+    <div class="lembrete-prox">
+        @if (s.TemLembrete)
+        {
+            <span>Próxima @(s.ProximaKm is not null ? $"aos {Num(s.ProximaKm, 0)} km" : "")@(s.ProximaKm is not null && s.ProximaData is not null ? " ou " : "")@(s.ProximaData is not null ? $"em {DataBR(s.ProximaData.Value)}" : "")</span>
+        }
+        else
+        {
+            <span class="muted">Sem intervalo definido para lembrar.</span>
+        }
+    </div>
+    @if (s.Progresso is double p)
+    {
+        var pct = Math.Min(p, 1) * 100;
+        <div class="progress" role="progressbar" aria-valuenow="@Math.Round(pct)" aria-valuemin="0" aria-valuemax="100">
+            <div style="width:@(pct.ToString(System.Globalization.CultureInfo.InvariantCulture))%"></div>
+        </div>
+        <div class="progress-legend">
+            <span>@s.Restante</span>
+            @if (s.Previsao is DateOnly prev && !s.Vencida)
+            {
+                <span>previsão <b>@DataBR(prev)</b></span>
+            }
+        </div>
+    }
+    <small class="lembrete-ultima">
+        Última: @DataBR(u.Data)@(u.Odometro is not null ? $" · {Num(u.Odometro, 0)} km" : "")@(u.Valor is not null ? $" · {Money(u.Valor)}" : "")@(!string.IsNullOrEmpty(u.Descricao) ? $" · {u.Descricao}" : "")
+    </small>
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired] public StatusManutencao Status { get; set; } = default!;
+
+    /// <summary>Cartão maior, usado para a troca de óleo.</summary>
+    [Parameter] public bool Destaque { get; set; }
+
+    /// <summary>Ações extras (botões) no rodapé do cartão.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

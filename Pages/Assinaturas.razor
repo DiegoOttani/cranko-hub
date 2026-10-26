@@ -1,0 +1,304 @@
+@page "/assinaturas"
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+@inject IJSRuntime JS
+
+@{
+    var hoje = Hoje;
+    var todas = Lista;
+    var ativas = todas.Where(a => a.Ativa).ToList();
+    var canceladas = todas.Count - ativas.Count;
+    var porMes = ativas.Sum(AssinaturasCalculos.PorMes);
+    var proximas = AssinaturasCalculos.CobrancasAte(ativas, hoje, 30);
+    var proxima = proximas.FirstOrDefault();
+    var maisCara = ativas.MaxBy(AssinaturasCalculos.PorMes);
+    var ed = Editando();
+
+    // Cobranças previstas mês a mês (do mês atual em diante)
+    var inicioMes = new DateOnly(hoje.Year, hoje.Month, 1);
+    var meses = Enumerable.Range(0, 12).Select(i => inicioMes.AddMonths(i)).ToList();
+    var cobrancasAno = AssinaturasCalculos.CobrancasAte(ativas, hoje, meses[^1].AddMonths(1).DayNumber - 1 - hoje.DayNumber);
+    var previsaoMensal = meses.Select(m =>
+    {
+        var doMes = cobrancasAno.Where(c => c.Data.Year == m.Year && c.Data.Month == m.Month).ToList();
+        var rotulo = MesLabel(m.Year, m.Month);
+        return new BarraDado(rotulo, doMes.Sum(c => c.Assinatura.Valor), $"{rotulo} · {doMes.Count} {Plural(doMes.Count, "cobrança", "cobranças")}");
+    }).ToList();
+
+    var tabela = (_filtro switch
+    {
+        "ativas" => todas.Where(a => a.Ativa),
+        "canceladas" => todas.Where(a => !a.Ativa),
+        _ => todas,
+    })
+    .OrderByDescending(a => a.Ativa)
+    .ThenBy(a => AssinaturasCalculos.ProximaCobranca(a, hoje))
+    .ThenBy(a => a.Nome)
+    .ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1>Assinaturas</h1>
+        <p>Guarde seus serviços recorrentes, veja quanto eles custam por mês e quando cada um vence.</p>
+    </div>
+</div>
+
+<section class="kpis">
+    <div class="kpi"><span class="kpi-label">Custo mensal</span>
+        <span class="kpi-value">@Money(porMes)</span>
+        <span class="kpi-sub">@Money(porMes * 12) por ano</span></div>
+    <div class="kpi"><span class="kpi-label">Ativas</span>
+        <span class="kpi-value">@ativas.Count</span>
+        <span class="kpi-sub">@(canceladas > 0 ? $"{canceladas} {Plural(canceladas, "cancelada", "canceladas")}" : "nenhuma cancelada")</span></div>
+    <div class="kpi"><span class="kpi-label">Próxima cobrança</span>
+        <span class="kpi-value">@(proxima.Assinatura?.Nome ?? Vazio)</span>
+        <span class="kpi-sub">
+            @if (proxima.Assinatura is not null)
+            {
+                var (texto, classe) = AssinaturasCalculos.Prazo(proxima.Data.DayNumber - hoje.DayNumber);
+                <span>@Money(proxima.Assinatura.Valor) · </span><span class="badge @classe">@texto</span>
+            }
+            else
+            {
+                @("Nada nos próximos 30 dias")
+            }
+        </span></div>
+    <div class="kpi"><span class="kpi-label">Próximos 30 dias</span>
+        <span class="kpi-value">@Money(proximas.Sum(c => c.Assinatura.Valor))</span>
+        <span class="kpi-sub">@proximas.Count @Plural(proximas.Count, "cobrança", "cobranças")</span></div>
+    <div class="kpi"><span class="kpi-label">Mais cara</span>
+        <span class="kpi-value">@(maisCara?.Nome ?? Vazio)</span>
+        <span class="kpi-sub">@(maisCara is not null ? Money(AssinaturasCalculos.PorMes(maisCara)) + "/mês" : "Nenhuma assinatura ativa")</span></div>
+</section>
+
+<div class="grid-2">
+    <form class="card" autocomplete="off" @ref="_formAssinatura" @onsubmit="Salvar">
+        <div class="card-head"><div><h2>@(ed is not null ? "Editar assinatura" : "Nova assinatura")</h2><p>Informe a data de uma cobrança — as próximas são calculadas pelo ciclo.</p></div></div>
+        <div class="form-grid">
+            <label class="field"><span>Nome *</span><input maxlength="60" required placeholder="ex.: Netflix" @bind="_fNome"></label>
+            <label class="field"><span>Valor (R$) *</span><input inputmode="decimal" required placeholder="ex.: 44,90" @bind="_fValor" @bind:event="oninput"></label>
+            <label class="field"><span>Ciclo</span>
+                <select @bind="_fCiclo">
+                    @foreach (var c in CicloCobranca.Todos)
+                    {
+                        <option value="@c.Chave">@c.Nome</option>
+                    }
+                </select></label>
+            <label class="field"><span>Próxima cobrança *</span><input type="date" required @bind="_fVencimento"></label>
+            <label class="field"><span>Categoria</span><input maxlength="40" list="categorias-assinatura" placeholder="ex.: Streaming" @bind="_fCategoria"></label>
+            <label class="field"><span>Forma de pagamento</span><input maxlength="40" placeholder="ex.: Cartão Nubank, Pix" @bind="_fPagamento"></label>
+            <label class="field full"><span>Observação</span><input maxlength="140" placeholder="plano família, login de quem, como cancelar..." @bind="_fObs"></label>
+            <label class="check"><input type="checkbox" @bind="_fAtiva"> Assinatura ativa</label>
+        </div>
+        <datalist id="categorias-assinatura">
+            @foreach (var c in AssinaturasCalculos.CategoriasSugeridas.Union(todas.Select(a => a.Categoria).OfType<string>()).Distinct().Order())
+            {
+                <option value="@c"></option>
+            }
+        </datalist>
+        @if (Pf(_fValor) is > 0 and var valor)
+        {
+            var ciclo = CicloCobranca.Buscar(_fCiclo);
+            <div class="preview">
+                <span>Equivale a <b>@Money(ciclo.PorMes(valor))/mês</b> · <b>@Money(ciclo.PorMes(valor) * 12)/ano</b></span>
+            </div>
+        }
+        <div class="form-actions">
+            <button class="btn primary" type="submit">@(ed is not null ? "Salvar alterações" : "Adicionar assinatura")</button>
+            @if (ed is not null)
+            {
+                <button class="btn" type="button" @onclick="LimparFormulario">Cancelar</button>
+            }
+        </div>
+    </form>
+
+    <section class="card">
+        <div class="card-head"><div><h2>Próximas cobranças</h2><p>O que vence nos próximos 30 dias.</p></div></div>
+        @if (proximas.Count > 0)
+        {
+            <ul class="activity">
+                @foreach (var (a, data) in proximas.Take(8))
+                {
+                    var (texto, classe) = AssinaturasCalculos.Prazo(data.DayNumber - hoje.DayNumber);
+                    <li>
+                        <span class="a-icon">@Icones.Assinaturas</span>
+                        <div class="a-text">@a.Nome · <b>@Money(a.Valor)</b><small>@DataBR(data)@(string.IsNullOrEmpty(a.Pagamento) ? "" : " · " + a.Pagamento)</small></div>
+                        <span class="badge @classe">@texto</span>
+                    </li>
+                }
+            </ul>
+            @if (proximas.Count > 8)
+            {
+                <p class="muted" style="margin-top:8px">+ @(proximas.Count - 8) @Plural(proximas.Count - 8, "outra", "outras") no período</p>
+            }
+        }
+        else
+        {
+            <div class="chart-empty">@(ativas.Count > 0 ? "Nenhuma cobrança nos próximos 30 dias." : "Adicione sua primeira assinatura ao lado.")</div>
+        }
+    </section>
+</div>
+
+<div class="grid-2">
+    <section class="card">
+        <div class="card-head"><div><h2>Custo mensal por categoria</h2><p>Quanto cada tipo de serviço pesa por mês (assinaturas anuais divididas por 12).</p></div></div>
+        <GraficoBarras Dados="AssinaturasCalculos.PorCategoria(ativas)" Nome="Por mês" Altura="240" Cor="var(--series-3)"
+                       FormatoY="@(new FormatoNumero(0, Prefixo: "R$ "))" Formato="FormatoNumero.Real"
+                       MsgVazia="Sem assinaturas ativas." />
+    </section>
+    <section class="card">
+        <div class="card-head"><div><h2>Cobranças previstas</h2><p>Quanto vai sair em cada um dos próximos 12 meses — é aqui que as anuais aparecem.</p></div></div>
+        <GraficoBarras Dados="previsaoMensal" Nome="Cobranças" Altura="240"
+                       FormatoY="@(new FormatoNumero(0, Prefixo: "R$ "))" Formato="FormatoNumero.Real"
+                       MsgVazia="Sem cobranças previstas." />
+    </section>
+</div>
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Todas as assinaturas</h2><p>@todas.Count @Plural(todas.Count, "assinatura", "assinaturas")</p></div>
+        <div class="chips">
+            @foreach (var (chave, rotulo) in Filtros)
+            {
+                <button type="button" class="chip @(_filtro == chave ? "active" : "")" @onclick="() => _filtro = chave">@rotulo</button>
+            }
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Assinatura</th><th>Categoria</th><th>Ciclo</th><th class="num">Valor</th><th class="num">Por mês</th><th>Próxima cobrança</th><th>Pagamento</th><th>Observação</th><th></th></tr></thead>
+            <tbody>
+                @if (tabela.Count == 0)
+                {
+                    <tr><td colspan="9" class="empty-row">@(todas.Count == 0 ? "Nenhuma assinatura ainda. Adicione a primeira acima ⬆" : "Nenhuma assinatura neste filtro.")</td></tr>
+                }
+                @foreach (var a in tabela)
+                {
+                    var proximaData = AssinaturasCalculos.ProximaCobranca(a, hoje);
+                    <tr @key="a.Id" class="@(a.Ativa ? "" : "inativa")">
+                        <td><b>@a.Nome</b></td>
+                        <td>@AssinaturasCalculos.CategoriaDe(a)</td>
+                        <td>@CicloCobranca.Buscar(a.Ciclo).Nome</td>
+                        <td class="num">@Money(a.Valor)</td>
+                        <td class="num">@Money(AssinaturasCalculos.PorMes(a))</td>
+                        <td>
+                            @if (a.Ativa)
+                            {
+                                var (texto, classe) = AssinaturasCalculos.Prazo(proximaData.DayNumber - hoje.DayNumber);
+                                <span>@DataBR(proximaData) </span><span class="badge @classe">@texto</span>
+                            }
+                            else
+                            {
+                                <span class="badge">cancelada</span>
+                            }
+                        </td>
+                        <td>@a.Pagamento</td>
+                        <td class="obs">@a.Obs</td>
+                        <td><div class="row-actions">
+                            <button type="button" title="Editar" @onclick="() => Editar(a)">@Icones.Editar</button>
+                            <button type="button" class="del" title="Excluir" @onclick="() => Excluir(a)">@Icones.Excluir</button>
+                        </div></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private static readonly (string Chave, string Rotulo)[] Filtros = [("ativas", "Ativas"), ("canceladas", "Canceladas"), ("todas", "Todas")];
+
+    // Preferência de visualização mantida enquanto o app estiver aberto
+    private static string _filtro = "todas";
+
+    private string? _editId;
+    private ElementReference _formAssinatura;
+    private bool _rolarParaFormulario;
+
+    private string _fNome = "", _fValor = "", _fCiclo = "mensal", _fCategoria = "", _fPagamento = "", _fObs = "";
+    private DateOnly? _fVencimento = Hoje;
+    private bool _fAtiva = true;
+
+    private List<Assinatura> Lista => Store.Dados.Assinaturas;
+
+    private Assinatura? Editando() => _editId is null ? null : Lista.FirstOrDefault(a => a.Id == _editId);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_rolarParaFormulario) return;
+        _rolarParaFormulario = false;
+        await JS.InvokeVoidAsync("crankohub.rolarAte", _formAssinatura);
+    }
+
+    private void LimparFormulario()
+    {
+        _editId = null;
+        _fNome = _fValor = _fCategoria = _fPagamento = _fObs = "";
+        _fCiclo = "mensal";
+        _fVencimento = Hoje;
+        _fAtiva = true;
+    }
+
+    private void Editar(Assinatura a)
+    {
+        _editId = a.Id;
+        _fNome = a.Nome;
+        _fValor = InVal(a.Valor, 2);
+        _fCiclo = a.Ciclo;
+        // Mostra a próxima cobrança, não a data antiga que foi cadastrada
+        _fVencimento = AssinaturasCalculos.ProximaCobranca(a, Hoje);
+        _fCategoria = a.Categoria ?? "";
+        _fPagamento = a.Pagamento ?? "";
+        _fObs = a.Obs ?? "";
+        _fAtiva = a.Ativa;
+        _rolarParaFormulario = true;
+    }
+
+    private void Excluir(Assinatura a)
+    {
+        if (!Dialogo.Confirmar($"Excluir a assinatura \"{a.Nome}\"?\n\nSe você só cancelou o serviço, prefira editar e desmarcar \"Assinatura ativa\" para manter o histórico.")) return;
+        Lista.Remove(a);
+        if (_editId == a.Id) LimparFormulario();
+        Store.Salvar();
+        Toast.Ok("Assinatura excluída.");
+    }
+
+    private void Salvar()
+    {
+        var nome = _fNome.Trim();
+        var valor = Pf(_fValor);
+        if (nome.Length == 0) { Toast.Erro("Informe o nome da assinatura."); return; }
+        if (valor is not (> 0 and <= 100_000)) { Toast.Erro("Informe um valor válido."); return; }
+        if (_fVencimento is not DateOnly vencimento) { Toast.Erro("Informe a data da próxima cobrança."); return; }
+
+        void Preencher(Assinatura a)
+        {
+            a.Nome = nome;
+            a.Valor = valor.Value;
+            a.Ciclo = _fCiclo;
+            a.Vencimento = vencimento;
+            a.Categoria = string.IsNullOrWhiteSpace(_fCategoria) ? null : _fCategoria.Trim();
+            a.Pagamento = string.IsNullOrWhiteSpace(_fPagamento) ? null : _fPagamento.Trim();
+            a.Obs = string.IsNullOrWhiteSpace(_fObs) ? null : _fObs.Trim();
+            a.Ativa = _fAtiva;
+        }
+
+        var ed = Editando();
+        if (ed is not null)
+        {
+            Preencher(ed);
+            Toast.Ok("Assinatura atualizada.");
+        }
+        else
+        {
+            var nova = new Assinatura { Id = ArmazenamentoService.NovoId() };
+            Preencher(nova);
+            Lista.Add(nova);
+            Toast.Ok($"Assinatura \"{nome}\" adicionada.");
+        }
+        Store.Salvar();
+        LimparFormulario();
+    }
+}

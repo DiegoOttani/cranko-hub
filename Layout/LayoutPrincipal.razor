@@ -1,0 +1,82 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ArmazenamentoService Store
+
+<div class="app @(_menuAberto ? "menu-open" : "")">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="logo">@Icones.Logo</span>
+            <span class="brand-name">CrankoHub</span>
+        </div>
+        <nav class="nav">
+            <NavLink href="" Match="NavLinkMatch.All">@Icones.Inicio<span>Início</span></NavLink>
+            <NavLink href="dieta">@Icones.Dieta<span>Dieta</span></NavLink>
+            <NavLink href="carro">@Icones.Carro<span>Carro</span></NavLink>
+            <NavLink href="assinaturas">@Icones.Assinaturas<span>Assinaturas</span></NavLink>
+            <div class="nav-sep"></div>
+            <NavLink href="dados">@Icones.Dados<span>Dados &amp; backup</span></NavLink>
+        </nav>
+        <div class="sidebar-foot">Seus dados ficam salvos neste computador.<br>Faça backups em <b>Dados &amp; backup</b>.</div>
+    </aside>
+    <div class="backdrop" @onclick="() => _menuAberto = false"></div>
+
+    <div class="main">
+        <header class="topbar">
+            <button class="icon-btn menu-btn" aria-label="Abrir menu" @onclick="() => _menuAberto = !_menuAberto">@Icones.Menu</button>
+            <div class="crumb"><span class="crumb-root">CrankoHub</span><span class="crumb-sep">/</span><span>@TituloDaPagina</span></div>
+            <button class="icon-btn" aria-label="Alternar tema claro/escuro" title="Alternar tema" @onclick="AlternarTema">@Icones.Lua@Icones.Sol</button>
+        </header>
+        @* A chave recria o container a cada navegação, reiniciando a animação de entrada *@
+        <main class="content enter" @key="_caminho">
+            @Body
+        </main>
+    </div>
+</div>
+
+<Toasts />
+
+@code {
+    private bool _menuAberto;
+    private string _caminho = "";
+
+    private string TituloDaPagina => _caminho switch
+    {
+        "dieta" => "Dieta",
+        "carro" => "Carro",
+        "assinaturas" => "Assinaturas",
+        "dados" => "Dados & backup",
+        _ => "Início",
+    };
+
+    protected override void OnInitialized()
+    {
+        _caminho = CaminhoAtual();
+        Nav.LocationChanged += AoNavegar;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JS.InvokeVoidAsync("crankohub.aplicarTema", Store.Dados.Tema);
+    }
+
+    private string CaminhoAtual() => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
+
+    private void AoNavegar(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
+    {
+        _caminho = CaminhoAtual();
+        _menuAberto = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("crankohub.rolarParaTopo");
+    });
+
+    private async Task AlternarTema()
+    {
+        Store.Dados.Tema = await JS.InvokeAsync<string>("crankohub.alternarTema");
+        Store.Salvar();
+    }
+
+    public void Dispose() => Nav.LocationChanged -= AoNavegar;
+}

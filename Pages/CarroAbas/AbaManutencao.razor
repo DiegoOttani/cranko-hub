@@ -1,0 +1,309 @@
+@* Aba "Manutenção" do Carro: lembretes (troca de óleo e outros), registro de serviços, gastos e histórico *@
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+@inject IJSRuntime JS
+
+@{
+    var hoje = Hoje;
+    var abast = CarroCalculos.DoVeiculo(Dados, Veiculo.Id);
+    var list = ManutencaoCalculos.DoVeiculo(Dados, Veiculo.Id);
+    var odoAtual = ManutencaoCalculos.OdometroAtual(abast, list);
+    var kmDia = ManutencaoCalculos.KmPorDia(abast, hoje);
+    var lembretes = ManutencaoCalculos.Lembretes(list, odoAtual, kmDia, hoje);
+    var oleo = lembretes.FirstOrDefault(s => s.Tipo.Chave == "oleo");
+    var outros = lembretes.Where(s => s != oleo).ToList();
+    var ed = Editando();
+    var total = list.Sum(m => m.Valor ?? 0);
+    var porTipo = list.Where(m => m.Valor > 0).GroupBy(m => m.Tipo)
+        .Select(g => (Tipo: TipoManutencao.Buscar(g.Key), Valor: g.Sum(m => m.Valor!.Value), N: g.Count()))
+        .OrderByDescending(x => x.Valor).ToList();
+    var tabela = Enumerable.Reverse(list).Where(m => _filtro == "" || m.Tipo == _filtro).ToList();
+}
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Lembretes</h2><p>
+            @if (odoAtual is not null)
+            {
+                <span>Odômetro atual estimado: <b>@Num(odoAtual, 0) km</b>@(kmDia > 0 ? $" · você roda ~{Num(kmDia * 30, 0)} km por mês" : "")</span>
+            }
+            else
+            {
+                <span>Informe o odômetro nos abastecimentos ou nos serviços para os lembretes por km funcionarem.</span>
+            }
+        </p></div>
+    </div>
+    <div class="lembretes">
+        @if (oleo is not null)
+        {
+            <CartaoLembrete Status="oleo" Destaque="true">
+                <div class="lembrete-acoes"><button class="btn sm primary" type="button" @onclick="@(() => NovoDoTipo("oleo"))">Registrar troca de óleo</button></div>
+            </CartaoLembrete>
+        }
+        else
+        {
+            <div class="lembrete destaque vazio">
+                <div class="lembrete-head"><b>Troca de óleo</b><span class="badge">sem registro</span></div>
+                <span class="muted">Registre a última troca de óleo para saber quando fazer a próxima (por km e por data).</span>
+                <div class="lembrete-acoes"><button class="btn sm primary" type="button" @onclick="@(() => NovoDoTipo("oleo"))">Registrar troca de óleo</button></div>
+            </div>
+        }
+        @foreach (var s in outros)
+        {
+            <CartaoLembrete Status="s" @key="s.Tipo.Chave">
+                <div class="lembrete-acoes"><button class="btn sm" type="button" @onclick="@(() => NovoDoTipo(s.Tipo.Chave))">Registrar novo</button></div>
+            </CartaoLembrete>
+        }
+    </div>
+</section>
+
+<div class="grid-2">
+    <form class="card" autocomplete="off" @ref="_form" @onsubmit="Salvar">
+        <div class="card-head"><div><h2>@(ed is not null ? "Editar serviço" : "Novo serviço")</h2><p>Troca de óleo, revisão, pneus, filtros... O intervalo define o lembrete da próxima vez.</p></div></div>
+        <div class="form-grid">
+            <label class="field"><span>Serviço</span>
+                <select @bind="_fTipo" @bind:after="AoTrocarTipo">
+                    @foreach (var t in TipoManutencao.Todos)
+                    {
+                        <option value="@t.Chave">@t.Nome</option>
+                    }
+                </select></label>
+            <label class="field"><span>Data</span><input type="date" required @bind="_fData"></label>
+            <label class="field"><span>Odômetro (km)</span><input inputmode="decimal" placeholder="@(odoAtual is not null ? $"estimado: {Num(odoAtual, 0)}" : "ex.: 52300")" @bind="_fOdometro" @bind:event="oninput"></label>
+            <label class="field"><span>Valor (R$)</span><input inputmode="decimal" placeholder="ex.: 289,90" @bind="_fValor" @bind:event="oninput"></label>
+            <label class="field full"><span>O que foi feito</span><input maxlength="100" placeholder="ex.: óleo 5W30 sintético + filtro de óleo" @bind="_fDescricao"></label>
+            <label class="field"><span>Fazer de novo em (km)</span><input inputmode="decimal" placeholder="ex.: 10000" @bind="_fIntervaloKm" @bind:event="oninput"></label>
+            <label class="field"><span>ou em (meses)</span><input inputmode="numeric" placeholder="ex.: 12" @bind="_fIntervaloMeses" @bind:event="oninput"></label>
+            <label class="field"><span>Oficina / loja</span><input maxlength="60" placeholder="opcional" @bind="_fLocal"></label>
+            <label class="field"><span>Observação</span><input maxlength="140" placeholder="opcional" @bind="_fObs"></label>
+        </div>
+        @{
+            var pOdo = Pf(_fOdometro);
+            var pKm = Pf(_fIntervaloKm);
+            var pMeses = Pf(_fIntervaloMeses);
+        }
+        @if (pKm > 0 || pMeses > 0)
+        {
+            <div class="preview">
+                <span>Próxima vez:
+                    @if (pKm > 0 && pOdo is not null) { <b>aos @Num(pOdo + pKm, 0) km</b> }
+                    @if (pKm > 0 && pOdo is not null && pMeses > 0) { <span> ou </span> }
+                    @if (pMeses > 0 && _fData is DateOnly d) { <b>em @DataBR(d.AddMonths((int)pMeses.Value))</b> }
+                    @if (pKm > 0 && pOdo is not null && pMeses > 0) { <span> — o que vier primeiro</span> }
+                </span>
+                @if (pKm > 0 && pOdo is null) { <span class="muted">· informe o odômetro para o lembrete por km</span> }
+            </div>
+        }
+        <div class="form-actions">
+            <button class="btn primary" type="submit">@(ed is not null ? "Salvar alterações" : "Adicionar serviço")</button>
+            @if (ed is not null)
+            {
+                <button class="btn" type="button" @onclick="LimparFormulario">Cancelar</button>
+            }
+        </div>
+    </form>
+
+    <section class="card">
+        <div class="card-head"><div><h2>Gastos com manutenção</h2><p>@Money(total) no total · @list.Count @Plural(list.Count, "serviço", "serviços")</p></div></div>
+        <GraficoBarras Dados="ManutencaoCalculos.Mensal(list)" Nome="Manutenção" Altura="200" Cor="var(--series-2)"
+                       FormatoY="@(new FormatoNumero(0, Prefixo: "R$ "))" Formato="FormatoNumero.Real"
+                       MsgVazia="Sem gastos com manutenção nos últimos 12 meses." />
+        @if (porTipo.Count > 0)
+        {
+            <ul class="activity">
+                @foreach (var x in porTipo)
+                {
+                    <li>
+                        <div class="a-text">@x.Tipo.Nome<small>@x.N @Plural(x.N, "serviço", "serviços")</small></div>
+                        <b>@Money(x.Valor)</b>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Histórico de manutenção</h2><p>@Veiculo.Nome · @tabela.Count @Plural(tabela.Count, "serviço", "serviços")</p></div>
+        <select class="select filtro" aria-label="Filtrar por serviço" @bind="_filtro">
+            <option value="">Todos os serviços</option>
+            @foreach (var t in TipoManutencao.Todos.Where(t => list.Any(m => m.Tipo == t.Chave)))
+            {
+                <option value="@t.Chave">@t.Nome</option>
+            }
+        </select>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Data</th><th>Serviço</th><th>O que foi feito</th><th class="num">Odômetro</th><th class="num">Valor</th><th>Próxima</th><th>Oficina / obs.</th><th></th></tr></thead>
+            <tbody>
+                @if (tabela.Count == 0)
+                {
+                    <tr><td colspan="8" class="empty-row">Nenhum serviço registrado ainda. Adicione o primeiro acima ⬆</td></tr>
+                }
+                @foreach (var m in tabela)
+                {
+                    var prox = new List<string>();
+                    if (m.Odometro is not null && m.IntervaloKm > 0) prox.Add($"{Num(m.Odometro + m.IntervaloKm, 0)} km");
+                    if (m.IntervaloMeses > 0) prox.Add(DataBR(m.Data.AddMonths(m.IntervaloMeses.Value)));
+                    <tr @key="m.Id">
+                        <td>@DataBR(m.Data)</td>
+                        <td><b>@TipoManutencao.NomeDe(m.Tipo)</b></td>
+                        <td class="obs">@m.Descricao</td>
+                        <td class="num">@(m.Odometro is not null ? Num(m.Odometro, 0) : Vazio)</td>
+                        <td class="num">@Money(m.Valor)</td>
+                        <td>@(prox.Count > 0 ? string.Join(" ou ", prox) : Vazio)</td>
+                        <td class="obs">@string.Join(" · ", new[] { m.Local, m.Obs }.Where(s => !string.IsNullOrEmpty(s)))</td>
+                        <td><div class="row-actions">
+                            <button type="button" title="Editar" @onclick="() => Editar(m)">@Icones.Editar</button>
+                            <button type="button" class="del" title="Excluir" @onclick="() => Excluir(m)">@Icones.Excluir</button>
+                        </div></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Veiculo Veiculo { get; set; } = default!;
+
+    /// <summary>Abre o formulário já preparado para registrar este tipo (ex.: "oleo").</summary>
+    [Parameter] public string? TipoInicial { get; set; }
+
+    /// <summary>Avisa a página do Carro que os dados mudaram (atualiza resumo e contadores).</summary>
+    [Parameter] public EventCallback Alterado { get; set; }
+
+    private string? _editId;
+    private ElementReference _form;
+    private bool _rolarParaFormulario;
+    private string _filtro = "";
+
+    private DateOnly? _fData = Hoje;
+    private string _fTipo = "oleo";
+    private string _fOdometro = "", _fValor = "", _fDescricao = "", _fLocal = "", _fObs = "", _fIntervaloKm = "", _fIntervaloMeses = "";
+
+    private DadosCarro Dados => Store.Dados.Carro;
+
+    private Manutencao? Editando() => _editId is null ? null : Dados.Manutencoes.FirstOrDefault(m => m.Id == _editId);
+
+    protected override void OnInitialized()
+    {
+        if (TipoInicial is not null) NovoDoTipo(TipoInicial);
+        else LimparFormulario();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_rolarParaFormulario) return;
+        _rolarParaFormulario = false;
+        await JS.InvokeVoidAsync("crankohub.rolarAte", _form);
+    }
+
+    private double? OdometroAtual() =>
+        ManutencaoCalculos.OdometroAtual(CarroCalculos.DoVeiculo(Dados, Veiculo.Id), ManutencaoCalculos.DoVeiculo(Dados, Veiculo.Id));
+
+    private void LimparFormulario() => Preparar("oleo", rolar: false);
+
+    /// <summary>Formulário novo para um tipo, repetindo intervalo, descrição e oficina do último serviço igual.</summary>
+    private void NovoDoTipo(string tipo) => Preparar(tipo, rolar: true);
+
+    private void Preparar(string tipo, bool rolar)
+    {
+        var anterior = ManutencaoCalculos.DoVeiculo(Dados, Veiculo.Id).LastOrDefault(m => m.Tipo == tipo);
+        var t = TipoManutencao.Buscar(tipo);
+        _editId = null;
+        _fTipo = t.Chave;
+        _fData = Hoje;
+        _fOdometro = InVal(OdometroAtual(), 0);
+        _fValor = "";
+        _fDescricao = anterior?.Descricao ?? "";
+        _fLocal = anterior?.Local ?? "";
+        _fObs = "";
+        _fIntervaloKm = InVal(anterior is not null ? anterior.IntervaloKm : t.Km, 0);
+        _fIntervaloMeses = InVal(anterior is not null ? anterior.IntervaloMeses : t.Meses, 0);
+        _rolarParaFormulario = rolar;
+    }
+
+    // Ao escolher outro serviço, sugere o intervalo padrão dele
+    private void AoTrocarTipo()
+    {
+        if (_editId is not null) return;
+        var anterior = ManutencaoCalculos.DoVeiculo(Dados, Veiculo.Id).LastOrDefault(m => m.Tipo == _fTipo);
+        var t = TipoManutencao.Buscar(_fTipo);
+        _fIntervaloKm = InVal(anterior is not null ? anterior.IntervaloKm : t.Km, 0);
+        _fIntervaloMeses = InVal(anterior is not null ? anterior.IntervaloMeses : t.Meses, 0);
+        _fDescricao = anterior?.Descricao ?? "";
+        _fLocal = anterior?.Local ?? _fLocal;
+    }
+
+    private void Editar(Manutencao m)
+    {
+        _editId = m.Id;
+        _fTipo = m.Tipo;
+        _fData = m.Data;
+        _fOdometro = InVal(m.Odometro, 0);
+        _fValor = InVal(m.Valor, 2);
+        _fDescricao = m.Descricao ?? "";
+        _fLocal = m.Local ?? "";
+        _fObs = m.Obs ?? "";
+        _fIntervaloKm = InVal(m.IntervaloKm, 0);
+        _fIntervaloMeses = InVal(m.IntervaloMeses, 0);
+        _rolarParaFormulario = true;
+    }
+
+    private async Task Excluir(Manutencao m)
+    {
+        if (!Dialogo.Confirmar($"Excluir \"{TipoManutencao.NomeDe(m.Tipo)}\" de {DataBR(m.Data)}?")) return;
+        Dados.Manutencoes.Remove(m);
+        if (_editId == m.Id) LimparFormulario();
+        Store.Salvar();
+        Toast.Ok("Serviço excluído.");
+        await Alterado.InvokeAsync();
+    }
+
+    private async Task Salvar()
+    {
+        var odometro = Pf(_fOdometro);
+        var valor = Pf(_fValor);
+        var intervaloKm = Pf(_fIntervaloKm);
+        var intervaloMeses = Pf(_fIntervaloMeses);
+        if (_fData is not DateOnly data) { Toast.Erro("Informe a data."); return; }
+        if (odometro is < 0) { Toast.Erro("Odômetro inválido."); return; }
+        if (valor is not null && valor is not > 0) { Toast.Erro("Valor inválido."); return; }
+        if (intervaloKm is not null && intervaloKm is not > 0) { Toast.Erro("Intervalo em km inválido."); return; }
+        if (intervaloMeses is not null && (intervaloMeses is not > 0 || intervaloMeses % 1 != 0)) { Toast.Erro("Intervalo em meses deve ser um número inteiro."); return; }
+
+        void Preencher(Manutencao m)
+        {
+            m.Tipo = _fTipo;
+            m.Data = data;
+            m.Odometro = odometro;
+            m.Valor = valor;
+            m.Descricao = string.IsNullOrWhiteSpace(_fDescricao) ? null : _fDescricao.Trim();
+            m.Local = string.IsNullOrWhiteSpace(_fLocal) ? null : _fLocal.Trim();
+            m.Obs = string.IsNullOrWhiteSpace(_fObs) ? null : _fObs.Trim();
+            m.IntervaloKm = intervaloKm;
+            m.IntervaloMeses = intervaloMeses is null ? null : (int)intervaloMeses.Value;
+        }
+
+        var ed = Editando();
+        if (ed is not null)
+        {
+            Preencher(ed);
+            Toast.Ok("Serviço atualizado.");
+        }
+        else
+        {
+            var novo = new Manutencao { Id = ArmazenamentoService.NovoId(), VeiculoId = Veiculo.Id };
+            Preencher(novo);
+            Dados.Manutencoes.Add(novo);
+            Toast.Ok($"Serviço registrado: {TipoManutencao.NomeDe(novo.Tipo)}.");
+        }
+        Store.Salvar();
+        LimparFormulario();
+        await Alterado.InvokeAsync();
+    }
+}

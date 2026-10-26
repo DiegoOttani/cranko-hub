@@ -1,0 +1,14 @@
+@* Legenda dos gráficos (só aparece com 2+ séries) *@
+@if (Itens.Count >= 2)
+{
+    <div class="legend">
+        @foreach (var item in Itens)
+        {
+            <span class="legend-item"><i style="background:@item.Color"></i>@item.Name</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ItemLegenda> Itens { get; set; } = [];
+}

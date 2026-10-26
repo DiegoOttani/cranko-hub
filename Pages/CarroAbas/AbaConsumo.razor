@@ -1,0 +1,120 @@
+@* Aba "Consumo" do Carro: gráficos de consumo, gastos com combustível e preços *@
+@inject ArmazenamentoService Store
+
+@{
+    var list = CarroCalculos.DoVeiculo(Store.Dados.Carro, Veiculo.Id);
+    var st = CarroCalculos.Estatisticas(list);
+    var last = list.LastOrDefault();
+    double? lastK = last?.Kml;
+    var porComb = Combustivel.Todos
+        .Select(f => (Comb: f, St: CarroCalculos.Estatisticas(list.Where(a => a.Combustivel == f.Chave).ToList())))
+        .Where(x => x.St.N > 0).ToList();
+
+    var corte = _periodo > 0 && last is not null ? last.Data.AddDays(-_periodo) : DateOnly.MinValue;
+    var seriesConsumo = Combustivel.Todos.Select(f => new SerieLinha(f.Nome, f.Cor,
+            list.Where(a => a.Combustivel == f.Chave && a.Data >= corte)
+                .Select(a => new PontoLinha(a.Data, a.Kml, string.Join(" · ", new[] { Num(a.Km, 0) + " km", Num(a.Litros, 1) + " L", a.Posto }.Where(s => !string.IsNullOrEmpty(s)))))
+                .ToList()))
+        .Where(s => s.Points.Count > 0).ToList();
+    var seriesPreco = Combustivel.Todos.Select(f => new SerieLinha(f.Nome, f.Cor,
+            list.Where(a => a.Combustivel == f.Chave && a.Valor > 0).Select(a => new PontoLinha(a.Data, a.Valor!.Value / a.Litros)).ToList()))
+        .Where(s => s.Points.Count > 0).ToList();
+}
+
+<section class="kpis">
+    <div class="kpi"><span class="kpi-label">Último consumo</span>
+        <span class="kpi-value">@Num(lastK, 2)<small>km/l</small></span>
+        <span class="kpi-sub">
+            @if (lastK is not null && st.N > 1) { <Delta Valor="(lastK / st.Media - 1) * 100" Unidade="% vs média" BomQuandoCai="false" /> }
+            else if (last is not null) { @DataBR(last.Data) }
+            else { @Vazio }
+        </span></div>
+    <div class="kpi"><span class="kpi-label">Melhor tanque</span>
+        <span class="kpi-value">@Num(st.Melhor, 2)<small>km/l</small></span>
+        <span class="kpi-sub">@(st.N > 0 ? $"pior: {Num(st.Pior, 2)} km/l" : "Nenhum abastecimento ainda")</span></div>
+    <div class="kpi"><span class="kpi-label">Litros</span>
+        <span class="kpi-value">@Num(st.Litros, 1)<small>L</small></span>
+        <span class="kpi-sub">@st.N @Plural(st.N, "abastecimento", "abastecimentos")</span></div>
+    <div class="kpi"><span class="kpi-label">Preço médio</span>
+        <span class="kpi-value">@Money(st.PrecoMedio)<small>/L</small></span>
+        <span class="kpi-sub">@(st.CustoKm > 0 ? Money(st.CustoKm) + " por km" : "Informe os valores pagos")</span></div>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Consumo por abastecimento</h2><p>km/l de cada tanque, separado por combustível — a linha tracejada é a sua média geral.</p></div>
+        <div class="chips">
+            @foreach (var (dias, rotulo) in Periodos)
+            {
+                <button type="button" class="chip @(_periodo == dias ? "active" : "")" @onclick="() => _periodo = dias">@rotulo</button>
+            }
+        </div>
+    </div>
+    <Legenda Itens="@(seriesConsumo.Select(s => new ItemLegenda(s.Name, s.Color)).ToList())" />
+    <GraficoLinha Series="seriesConsumo" Altura="280" Rotulo="Consumo por abastecimento"
+                  FormatoY="new FormatoNumero(1)" Formato="@(new FormatoNumero(2, " km/l"))"
+                  Referencias="@(st.Media > 0 ? [new ReferenciaLinha(st.Media.Value, $"Média geral {Num(st.Media, 1)} km/l")] : [])"
+                  MsgVazia="Adicione abastecimentos para ver o consumo." />
+</section>
+
+<div class="grid-2">
+    <section class="card">
+        <div class="card-head"><div><h2>Gasto mensal com combustível</h2><p>Total pago nos últimos 12 meses.</p></div></div>
+        <GraficoBarras Dados="CarroCalculos.Mensal(list, a => a.Valor ?? 0)" Nome="Combustível" Altura="230"
+                       FormatoY="@(new FormatoNumero(0, Prefixo: "R$ "))" Formato="FormatoNumero.Real"
+                       MsgVazia="Sem gastos nos últimos 12 meses." />
+    </section>
+    <section class="card">
+        <div class="card-head"><div><h2>Km rodados por mês</h2><p>Quanto você dirigiu nos últimos 12 meses.</p></div></div>
+        <GraficoBarras Dados="CarroCalculos.Mensal(list, a => a.Km)" Nome="Km rodados" Altura="230"
+                       FormatoY="new FormatoNumero(0)" Formato="@(new FormatoNumero(0, " km"))"
+                       MsgVazia="Sem km registrados nos últimos 12 meses." />
+    </section>
+</div>
+
+<div class="grid-2">
+    <section class="card">
+        <div class="card-head"><div><h2>Preço por litro</h2><p>Evolução do preço pago em cada combustível.</p></div></div>
+        <Legenda Itens="@(seriesPreco.Select(s => new ItemLegenda(s.Name, s.Color)).ToList())" />
+        <GraficoLinha Series="seriesPreco" Altura="230" FormatoY="new FormatoNumero(2)" Formato="FormatoNumero.Real"
+                      MsgVazia="Informe o valor pago para acompanhar os preços." />
+    </section>
+    <section class="card">
+        <div class="card-head"><div><h2>Comparativo por combustível</h2><p>Qual combustível está compensando no seu carro.</p></div></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Combustível</th><th class="num">Tanques</th><th class="num">km/l</th><th class="num">R$/L</th><th class="num">R$/km</th></tr></thead>
+                <tbody>
+                    @if (porComb.Count == 0)
+                    {
+                        <tr><td colspan="5" class="empty-row">Sem dados ainda.</td></tr>
+                    }
+                    @foreach (var x in porComb)
+                    {
+                        <tr>
+                            <td><span class="fuel"><i style="background:@x.Comb.Cor"></i>@x.Comb.Nome</span></td>
+                            <td class="num">@x.St.N</td>
+                            <td class="num"><b>@Num(x.St.Media, 2)</b></td>
+                            <td class="num">@Money(x.St.PrecoMedio)</td>
+                            <td class="num"><b>@Money(x.St.CustoKm)</b></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (porComb.Count > 1 && porComb.All(x => x.St.CustoKm > 0))
+        {
+            var melhor = porComb.MinBy(x => x.St.CustoKm)!;
+            <div class="calc-result"><span>Mais econômico por km até agora:</span><span class="calc-big"><span class="dot" style="background:@melhor.Comb.Cor"></span>@melhor.Comb.Nome · @Money(melhor.St.CustoKm)/km</span></div>
+        }
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Veiculo Veiculo { get; set; } = default!;
+
+    private static readonly (int Dias, string Rotulo)[] Periodos = [(90, "3 meses"), (180, "6 meses"), (365, "1 ano"), (0, "Tudo")];
+
+    // Período do gráfico de consumo (dias, 0 = tudo), mantido enquanto o app estiver aberto
+    private static int _periodo = 180;
+}
