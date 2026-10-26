@@ -14,6 +14,9 @@ public class Configuracoes
     public DateOnly? UltimoBackup { get; set; }
 
     /// <summary>O X da janela esconde o app na bandeja (perto do relógio) em vez de fechar.</summary>
+    /// <summary>Cor de destaque: chave da paleta (ver <see cref="Models.CorDestaque"/>) ou "#RRGGBB".</summary>
+    public string CorDestaque { get; set; } = "azul";
+
     public bool MinimizarParaBandeja { get; set; } = true;
 
     /// <summary>Já avisou que o app continua rodando na bandeja.</summary>

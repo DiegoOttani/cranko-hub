@@ -1,9 +1,12 @@
+@page "/configuracoes"
 @page "/dados"
 @inject ArmazenamentoService Store
 @inject ToastService Toast
 @inject IDialogoService Dialogo
 @inject BackupService Backup
 @inject AvisosService Avisos
+@inject JanelaService Janela
+@inject IJSRuntime JS
 
 @{
     var d = Store.Dados;
@@ -13,10 +16,40 @@
 
 <div class="page-head">
     <div>
-        <h1>Dados &amp; backup</h1>
-        <p>Tudo fica salvo automaticamente neste computador. Exporte um backup para levar para outro computador ou não perder nada.</p>
+        <h1>Configurações</h1>
+        <p>Aparência, aplicativo, backup e dados. Tudo fica salvo automaticamente neste computador.</p>
     </div>
 </div>
+
+<section class="card">
+    <div class="card-head"><div><h2>Aparência</h2><p>Tema e cor de destaque do aplicativo.</p></div></div>
+    @{
+        var corAtual = CorDestaque.DaConfig(cfg.CorDestaque);
+        var personalizada = !CorDestaque.Paleta.Contains(corAtual);
+    }
+    <div class="aparencia">
+        <span>Tema</span>
+        <div class="chips">
+            @foreach (var (valor, rotulo) in Temas)
+            {
+                <button type="button" class="chip @(d.Tema == valor ? "active" : "")" @onclick="() => MudarTema(valor)">@rotulo</button>
+            }
+        </div>
+        <span>Cor de destaque</span>
+        <div class="paleta">
+            @foreach (var c in CorDestaque.Paleta)
+            {
+                <button type="button" class="cor @(c == corAtual ? "ativa" : "")" title="@c.Nome" aria-label="@c.Nome"
+                        style="background:@c.Claro;--cor:@c.Claro" @onclick="() => MudarCor(c.Chave)"></button>
+            }
+            <label class="cor cor-personalizada @(personalizada ? "ativa" : "")" title="Personalizada"
+                   style="@(personalizada ? $"background:{corAtual.Claro};--cor:{corAtual.Claro}" : "")">
+                <input type="color" value="@(personalizada ? corAtual.Claro.ToLowerInvariant() : "#5856d6")" @onchange="MudarCorPersonalizada">
+            </label>
+            <span class="muted">@corAtual.Nome</span>
+        </div>
+    </div>
+</section>
 
 <section class="card">
     <div class="card-head"><div><h2>Armazenamento</h2><p>@ArmazenamentoService.CaminhoDados</p></div></div>
@@ -111,6 +144,26 @@
 </div>
 
 @code {
+    private static readonly (string? Valor, string Rotulo)[] Temas = [("light", "Claro"), ("dark", "Escuro"), (null, "Automático")];
+
+    private async Task MudarTema(string? tema)
+    {
+        Store.Dados.Tema = tema;
+        Store.Salvar();
+        await JS.InvokeVoidAsync("crankohub.aplicarTema", tema);
+        Janela.TemaMudou(tema);
+    }
+
+    private async Task MudarCor(string valor)
+    {
+        Store.Dados.Config.CorDestaque = valor;
+        Store.Salvar();
+        var cor = CorDestaque.DaConfig(valor);
+        await JS.InvokeVoidAsync("crankohub.aplicarDestaque", cor.Claro, cor.Escuro, cor.Texto);
+    }
+
+    private Task MudarCorPersonalizada(ChangeEventArgs e) => MudarCor(e.Value?.ToString()?.ToUpperInvariant() ?? "azul");
+
     private void Exportar()
     {
         var caminho = Dialogo.SalvarBackup($"crankohub-backup-{Iso(Hoje)}.json");

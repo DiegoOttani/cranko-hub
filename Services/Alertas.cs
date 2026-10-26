@@ -82,7 +82,7 @@ public static class Alertas
         {
             lista.Add(new("backup", "Faça um backup dos seus dados",
                 cfg.UltimoBackup is DateOnly ub ? $"Último backup em {Formatacao.DataBR(ub)}" : "Ative o backup automático para não perder nada",
-                "backup", "", "dados", Icones.Dados));
+                "backup", "", "configuracoes", Icones.Dados));
         }
 
         return lista.OrderBy(a => Array.IndexOf(Urgencia, a.Classe)).ToList();

@@ -131,6 +131,6 @@ Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes 
 
 ## Pendências de teste do que já existe
 
-- **Iniciar com o Windows** (Dados & backup → Aplicativo): conferir se a entrada aparece em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` e se o app abre na bandeja ao ligar o PC.
+- **Iniciar com o Windows** (Configurações → Aplicativo): conferir se a entrada aparece em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` e se o app abre na bandeja ao ligar o PC.
 - **Notificações:** conferir a aparência no Windows e se o clique abre a tela certa.
 - **Diálogos:** "Restaurar" um backup automático e "Marcar como pago" em Documentos (incluindo a pergunta de criar o do próximo ano).

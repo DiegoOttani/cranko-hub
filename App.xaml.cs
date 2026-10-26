@@ -66,6 +66,7 @@ public partial class App : Application
         servicos.AddSingleton<ArmazenamentoService>();
         servicos.AddSingleton<BackupService>();
         servicos.AddSingleton<NavegacaoService>();
+        servicos.AddSingleton<JanelaService>();
         servicos.AddSingleton<BandejaService>();
         servicos.AddSingleton<AvisosService>();
         return servicos.BuildServiceProvider();

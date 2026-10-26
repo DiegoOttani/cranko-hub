@@ -5,6 +5,7 @@
 @inject ArmazenamentoService Store
 @inject BackupService Backup
 @inject NavegacaoService Navegacao
+@inject JanelaService Janela
 
 <div class="app @(_menuAberto ? "menu-open" : "")">
     <aside class="sidebar">
@@ -18,9 +19,9 @@
             <NavLink href="carro">@Icones.Carro<span>Carro</span></NavLink>
             <NavLink href="assinaturas">@Icones.Assinaturas<span>Assinaturas</span></NavLink>
             <div class="nav-sep"></div>
-            <NavLink href="dados">@Icones.Dados<span>Dados &amp; backup</span></NavLink>
+            <NavLink href="configuracoes">@Icones.Engrenagem<span>Configurações</span></NavLink>
         </nav>
-        <div class="sidebar-foot">Seus dados ficam salvos neste computador.<br>Faça backups em <b>Dados &amp; backup</b>.</div>
+        <div class="sidebar-foot">Seus dados ficam salvos neste computador.<br>Faça backups em <b>Configurações</b>.</div>
     </aside>
     <div class="backdrop" @onclick="() => _menuAberto = false"></div>
 
@@ -48,7 +49,7 @@
         "dieta" => "Dieta",
         "carro" => "Carro",
         "assinaturas" => "Assinaturas",
-        "dados" => "Dados & backup",
+        "configuracoes" or "dados" => "Configurações",
         _ => "Início",
     };
 
@@ -66,6 +67,8 @@
     {
         if (!firstRender) return;
         await JS.InvokeVoidAsync("crankohub.aplicarTema", Store.Dados.Tema);
+        var cor = CorDestaque.DaConfig(Store.Dados.Config.CorDestaque);
+        await JS.InvokeVoidAsync("crankohub.aplicarDestaque", cor.Claro, cor.Escuro, cor.Texto);
         Backup.ExecutarSeNecessario();
     }
 
@@ -82,6 +85,7 @@
     private async Task AlternarTema()
     {
         Store.Dados.Tema = await JS.InvokeAsync<string>("crankohub.alternarTema");
+        Janela.TemaMudou(Store.Dados.Tema);
         Store.Salvar();
     }
 

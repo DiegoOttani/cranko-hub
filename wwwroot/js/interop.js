@@ -17,6 +17,14 @@ window.crankohub = {
     return novo;
   },
 
+  // Cor de destaque escolhida em Configurações (versões clara/escura e cor do texto sobre ela)
+  aplicarDestaque(claro, escuro, texto) {
+    const s = document.documentElement.style;
+    s.setProperty('--destaque-claro', claro);
+    s.setProperty('--destaque-escuro', escuro);
+    s.setProperty('--destaque-texto', texto);
+  },
+
   rolarParaTopo() { window.scrollTo(0, 0); },
 
   rolarAte(el) { el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
