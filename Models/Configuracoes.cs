@@ -35,4 +35,11 @@ public class Configuracoes
 
     /// <summary>Chave da API do RAWG (jogos).</summary>
     public string? ChaveRawg { get; set; }
+
+    /// <summary>Token do GitHub (só leitura) para baixar atualizações do repositório privado.</summary>
+    public string? TokenGitHub { get; set; }
+
+    public bool VerificarAtualizacoes { get; set; } = true;
+
+    public DateOnly? UltimaVerificacaoAtualizacao { get; set; }
 }

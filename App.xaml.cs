@@ -26,6 +26,8 @@ public partial class App : Application
         DispatcherUnhandledException += AoOcorrerErroNaoTratado;
         base.OnStartup(e);
 
+        var atualizado = AtualizacaoService.PrepararInicio(e.Args);
+
         // Uma instância só: se já estiver aberto (talvez na bandeja), pede para ele aparecer e sai
         _instancia = new Mutex(true, NomeMutex, out var primeira);
         if (!primeira)
@@ -54,6 +56,9 @@ public partial class App : Application
             _janela.Show();
         bandeja.AplicarCor(Models.CorDestaque.DaConfig(store.Dados.Config.CorDestaque).Claro);
         avisos.Iniciar();
+        Servicos.GetRequiredService<AtualizacaoService>().Iniciar();
+        if (atualizado)
+            bandeja.Notificar("CrankoHub atualizado", $"Agora na versão {AtualizacaoService.Texto(AtualizacaoService.VersaoAtual)}.");
     }
 
     private static IServiceProvider CriarServicos()
@@ -71,6 +76,7 @@ public partial class App : Application
         servicos.AddSingleton<JanelaService>();
         servicos.AddSingleton<BandejaService>();
         servicos.AddSingleton<AvisosService>();
+        servicos.AddSingleton<AtualizacaoService>();
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("CrankoHub/1.0");
         servicos.AddSingleton(http);

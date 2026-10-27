@@ -17,6 +17,8 @@ Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes 
 - **Alertas:** `Services/Alertas.cs` é a fonte única do card "Precisa de atenção" do Início e das notificações do Windows (`Services/AvisosService.cs`).
 - **Menu:** `Layout/LayoutPrincipal.razor` (NavLink + `TituloDaPagina`). Ícones em `Components/Icones.cs`.
 - **Publicar o .exe:** `dotnet publish -c Release -p:PublishProfile=win-x64` gera `publicar\CrankoHub.exe`.
+- **Lançar uma versão:** `git tag crankohub-v1.2.0` e `git push origin crankohub-v1.2.0`. O workflow `.github/workflows/crankohub-release.yml` compila e cria o Release com o `CrankoHub.exe`; a versão vem da tag.
+- **Atualizar os outros PCs:** Configurações → Atualizações → "Verificar atualizações" → "Atualizar agora" (`Services/AtualizacaoService.cs`). Precisa de um token fine-grained do GitHub só para o repositório `MyProjs_`, com *Contents: Read-only*, colado nesse card. PC novo: baixar o `CrankoHub.exe` do Releases e colar o token.
 
 ---
 

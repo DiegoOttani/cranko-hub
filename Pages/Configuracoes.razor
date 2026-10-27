@@ -8,6 +8,7 @@
 @inject JanelaService Janela
 @inject IJSRuntime JS
 @inject BandejaService Bandeja
+@inject AtualizacaoService Atualizacao
 
 @{
     var d = Store.Dados;
@@ -133,6 +134,43 @@
     </div>
 </section>
 
+<section class="card">
+    <div class="card-head">
+        <div><h2>Atualizações</h2><p>Versão instalada: <b>@AtualizacaoService.Texto(AtualizacaoService.VersaoAtual)</b>. As versões novas vêm do Releases do GitHub.</p></div>
+        <label class="check"><input type="checkbox" checked="@cfg.VerificarAtualizacoes" @onchange="@(e => Mudar(e, v => cfg.VerificarAtualizacoes = v))"> Verificar sozinho</label>
+    </div>
+    <div class="form-grid">
+        <label class="field full"><span>Token do GitHub (só leitura)</span>
+            <input type="password" placeholder="github_pat_..." value="@cfg.TokenGitHub" @onchange="SalvarToken"></label>
+    </div>
+    <p class="muted" style="margin-top:10px">Crie em <b>GitHub → Settings → Developer settings → Fine-grained tokens</b>, só para o repositório <b>MyProjs_</b>, com permissão <b>Contents: Read-only</b>. Fica salvo só neste computador (e nos backups exportados).</p>
+    @if (Atualizacao.Disponivel is { } nova)
+    {
+        <p style="margin-top:12px"><b>Versão @AtualizacaoService.Texto(nova.Versao) disponível</b> (@Num(nova.Tamanho / 1048576.0, 0) MB)</p>
+        @if (!string.IsNullOrWhiteSpace(nova.Notas))
+        {
+            <p class="muted" style="white-space:pre-wrap;margin-top:6px">@nova.Notas</p>
+        }
+        @if (_progresso is double p)
+        {
+            <div class="progress"><div style="width:@Num(p * 100, 0)%"></div></div>
+            <div class="progress-legend"><span>Baixando…</span><b>@Num(p * 100, 0)%</b></div>
+        }
+    }
+    else if (_emDia)
+    {
+        <p class="muted" style="margin-top:12px">Você está na versão mais recente.</p>
+    }
+    <div class="form-actions">
+        <button class="btn" type="button" disabled="@(_verificando || _progresso is not null || string.IsNullOrWhiteSpace(cfg.TokenGitHub))" @onclick="VerificarAtualizacao">
+            @(_verificando ? "Verificando…" : "Verificar atualizações")</button>
+        @if (Atualizacao.Disponivel is { } versaoNova)
+        {
+            <button class="btn primary" type="button" disabled="@(_progresso is not null)" @onclick="() => Atualizar(versaoNova)">Atualizar agora</button>
+        }
+    </div>
+</section>
+
 <div class="grid-2">
     <section class="card action-card">
         <h2>Exportar backup</h2>
@@ -173,6 +211,54 @@
         if (tmdb) Store.Dados.Config.ChaveTmdb = chave; else Store.Dados.Config.ChaveRawg = chave;
         Store.Salvar();
         Toast.Ok(chave is null ? "Chave removida." : "Chave salva.");
+    }
+
+    private bool _verificando, _emDia;
+    private double? _progresso;
+
+    private void SalvarToken(ChangeEventArgs e)
+    {
+        var token = e.Value?.ToString()?.Trim() is { Length: > 0 } t ? t : null;
+        Store.Dados.Config.TokenGitHub = token;
+        Store.Salvar();
+        Toast.Ok(token is null ? "Token removido." : "Token salvo.");
+    }
+
+    private async Task VerificarAtualizacao()
+    {
+        _verificando = true;
+        _emDia = false;
+        try
+        {
+            _emDia = await Atualizacao.VerificarAsync() is null;
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro(ex is InvalidOperationException ? ex.Message : $"Não foi possível verificar: {ex.Message}");
+        }
+        _verificando = false;
+    }
+
+    private async Task Atualizar(AtualizacaoService.Novidade n)
+    {
+        if (!await Dialogo.Confirmar($"Atualizar para a versão {AtualizacaoService.Texto(n.Versao)}?\nO CrankoHub vai baixar a versão nova, fechar e abrir de novo. Seus dados não são alterados.")) return;
+        _progresso = 0;
+        // Redesenha só quando muda o percentual inteiro (o download avisa a cada 80 KB)
+        var progresso = new Progress<double>(p =>
+        {
+            if ((int)(p * 100) == (int)((_progresso ?? 0) * 100)) return;
+            _progresso = p;
+            StateHasChanged();
+        });
+        try
+        {
+            await Atualizacao.InstalarAsync(n, progresso);
+        }
+        catch (Exception ex)
+        {
+            _progresso = null;
+            Toast.Erro(ex is InvalidOperationException ? ex.Message : $"Não foi possível atualizar: {ex.Message}");
+        }
     }
 
     private async Task MudarCor(string valor)
