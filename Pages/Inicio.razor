@@ -133,6 +133,27 @@
     </a>
 </div>
 
+<a class="card link-card" href="entretenimento">
+    <div class="link-head">
+        <span class="link-icon">@Icones.Entretenimento</span>
+        <div><h2>Entretenimento</h2><p>@d.Entretenimento.Count @Plural(d.Entretenimento.Count, "item", "itens") na estante · @d.Entretenimento.Count(e => e.Status == "concluido" && e.Data?.Year == Hoje.Year) em @Hoje.Year</p></div>
+        <span class="go">@Icones.Seta</span>
+    </div>
+    @if (d.Entretenimento.Count > 0)
+    {
+        <div class="estante-mini">
+            @foreach (var e in d.Entretenimento.OrderByDescending(e => e.Data ?? DateOnly.MinValue).Take(12))
+            {
+                <Capa Item="e" />
+            }
+        </div>
+    }
+    else
+    {
+        <div class="chart-empty"><span>Sua estante ainda está vazia.</span></div>
+    }
+</a>
+
 <section class="card">
     <div class="card-head"><div><h2>Atividade recente</h2><p>Seus últimos registros em todas as áreas.</p></div></div>
     @if (atividades.Count > 0)

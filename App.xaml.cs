@@ -1,3 +1,4 @@
+using System.Net.Http;
 ﻿using System.Windows;
 using System.Windows.Threading;
 using CrankoHub.Services;
@@ -51,6 +52,7 @@ public partial class App : Application
         _janela = new MainWindow();
         if (!e.Args.Contains(InicializacaoWindows.ArgMinimizado))
             _janela.Show();
+        bandeja.AplicarCor(Models.CorDestaque.DaConfig(store.Dados.Config.CorDestaque).Claro);
         avisos.Iniciar();
     }
 
@@ -69,6 +71,11 @@ public partial class App : Application
         servicos.AddSingleton<JanelaService>();
         servicos.AddSingleton<BandejaService>();
         servicos.AddSingleton<AvisosService>();
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("CrankoHub/1.0");
+        servicos.AddSingleton(http);
+        servicos.AddSingleton<CapasService>();
+        servicos.AddSingleton<EntretenimentoBusca>();
         return servicos.BuildServiceProvider();
     }
 

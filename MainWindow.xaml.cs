@@ -30,6 +30,14 @@ public partial class MainWindow : Window
         e.UserDataFolder = Path.Combine(ArmazenamentoService.PastaDados, "WebView2");
     }
 
+    // As capas do Entretenimento ficam numa pasta do usuário; o WebView as enxerga por um endereço próprio
+    private void AoWebViewPronto(object? sender, BlazorWebViewInitializedEventArgs e)
+    {
+        Directory.CreateDirectory(CapasService.Pasta);
+        e.WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(CapasService.Host, CapasService.Pasta,
+            Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+    }
+
     // ---- Barra de título estilo Mac ----
 
     private void AoFechar(object sender, RoutedEventArgs e) => Close();

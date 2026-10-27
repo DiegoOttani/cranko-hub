@@ -164,12 +164,15 @@ public class ArmazenamentoService
         s.Config.AvisosEnviados ??= [];
         s.Assinaturas ??= []; // backups antigos (e do app web) não têm assinaturas
         s.Assinaturas.RemoveAll(a => a is null);
+        s.Entretenimento ??= [];
+        s.Entretenimento.RemoveAll(e => e is null);
 
         foreach (var r in s.Dieta.Registros.Where(r => string.IsNullOrEmpty(r.Id))) r.Id = NovoId();
         foreach (var a in s.Carro.Abastecimentos.Where(a => string.IsNullOrEmpty(a.Id))) a.Id = NovoId();
         foreach (var m in s.Carro.Manutencoes.Where(m => string.IsNullOrEmpty(m.Id))) m.Id = NovoId();
         foreach (var x in s.Carro.Documentos.Where(x => string.IsNullOrEmpty(x.Id))) x.Id = NovoId();
         foreach (var a in s.Assinaturas.Where(a => string.IsNullOrEmpty(a.Id))) a.Id = NovoId();
+        foreach (var e in s.Entretenimento.Where(e => string.IsNullOrEmpty(e.Id))) e.Id = NovoId();
         return s;
     }
 
@@ -267,6 +270,20 @@ public class ArmazenamentoService
             Assin("Academia", 129.90, "mensal", 6, "Academia", "Débito automático"),
             Assin("Xbox Game Pass", 59.99, "mensal", 21, "Jogos", "Cartão de crédito"),
             Assin("Jornal digital", 9.90, "mensal", 17, "Notícias", "Cartão de crédito", ativa: false),
+        ];
+
+        ItemEntretenimento Ent(string cat, string titulo, int ano, int? diasAtras, double? nota, string status = "concluido", string? criadores = null) =>
+            new() { Id = NovoId(), Categoria = cat, Titulo = titulo, Ano = ano, Data = diasAtras is int d ? Dia(d) : null, Nota = nota, Status = status, Criadores = criadores };
+        s.Entretenimento =
+        [
+            Ent("filme", "Duna: Parte Dois", 2024, 12, 4.5, criadores: "Denis Villeneuve"),
+            Ent("filme", "Oppenheimer", 2023, 60, 4, criadores: "Christopher Nolan"),
+            Ent("serie", "Ruptura", 2022, 30, 5, criadores: "Dan Erickson"),
+            Ent("animacao", "Divertida Mente 2", 2024, 90, 3.5, criadores: "Kelsey Mann"),
+            Ent("anime", "Frieren", 2023, null, null, "andamento", "Madhouse"),
+            Ent("jogo", "Hollow Knight", 2017, 120, 5, criadores: "Team Cherry"),
+            Ent("jogo", "Elden Ring", 2022, null, null, "quero", "FromSoftware"),
+            Ent("livro", "Projeto Hail Mary", 2021, 45, 4.5, criadores: "Andy Weir"),
         ];
         return s;
     }

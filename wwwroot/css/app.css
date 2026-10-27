@@ -485,3 +485,63 @@ tr.inativa td b { color: var(--text-2); font-weight: 600; }
 .cor.ativa { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--cor); }
 .cor-personalizada { position: relative; overflow: hidden; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
 .cor-personalizada input { position: absolute; inset: -8px; width: 40px; height: 40px; opacity: 0; cursor: pointer; }
+
+/* ---- Entretenimento (estante) ---- */
+.estante-filtros { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }
+.estante-filtros .chips { flex-wrap: wrap; align-self: flex-start; }
+.estante-busca { display: flex; gap: 8px; flex-wrap: wrap; }
+.estante-busca input { flex: 1 1 220px; }
+.estante-busca select { flex: 0 0 auto; }
+.estante { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 22px 18px; }
+.capa-item { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.capa-item .capa { transition: transform .18s ease, box-shadow .18s ease; }
+.capa-item:hover .capa, .capa-item:focus-visible .capa { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.22); }
+.capa-item:focus-visible .capa { outline: 2px solid var(--accent); outline-offset: 2px; }
+.capa { display: block; position: relative; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: var(--surface-2); box-shadow: 0 2px 8px rgba(0,0,0,.14); }
+.capa img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.capa-vazia { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; text-align: center;
+  background: linear-gradient(160deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000)); color: #fff; }
+.capa-vazia b { font-size: 34px; font-weight: 700; opacity: .9; }
+.capa-vazia small { font-size: 12px; font-weight: 600; line-height: 1.3; opacity: .85; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.capa-vazia.mini { position: static; width: 46px; height: 69px; border-radius: 6px; font-weight: 700; flex: 0 0 auto; }
+.capa-titulo { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capa-sub { font-size: 12px; color: var(--muted); min-height: 18px; display: flex; align-items: center; }
+
+.estrelas { position: relative; display: inline-block; font-size: 14px; line-height: 1; letter-spacing: 1px; white-space: nowrap; }
+.estrelas-base { color: var(--border); }
+.estrelas-cheias { position: absolute; inset: 0 auto 0 0; overflow: hidden; color: #ff9f0a; }
+.estrelas.editavel { font-size: 26px; cursor: pointer; }
+.estrelas button { position: absolute; top: 0; bottom: 0; width: 10%; border: 0; padding: 0; background: transparent; cursor: pointer; }
+
+.modal.modal-largo { max-width: 720px; max-height: calc(100vh - 32px); overflow: auto; }
+.busca-linha { display: flex; gap: 8px; }
+.busca-linha input { flex: 1; }
+.resultados { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 360px; overflow: auto; }
+.resultado { all: unset; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 6px; border-radius: 10px; }
+.resultado:hover { background: var(--surface-2); }
+.resultado[disabled] { opacity: .5; cursor: wait; }
+.resultado img { width: 46px; height: 69px; object-fit: cover; border-radius: 6px; flex: 0 0 auto; background: var(--surface-2); }
+.resultado span { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
+.resultado small { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detalhe { display: grid; grid-template-columns: 180px 1fr; gap: 20px; align-items: start; }
+.detalhe-capa { display: flex; flex-direction: column; gap: 8px; }
+.detalhe-info { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.detalhe-info h2 { font-size: 22px; }
+.detalhe-nota { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sinopse { font-size: 13.5px; line-height: 1.55; color: var(--text-2); white-space: pre-line; }
+.field textarea { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); resize: vertical; }
+.field textarea:focus { outline: none; border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); }
+.estante-mini { display: flex; gap: 10px; overflow: hidden; }
+.estante-mini .capa { width: 64px; flex: 0 0 auto; }
+@media (max-width: 640px) { .detalhe { grid-template-columns: 1fr; } .detalhe-capa { max-width: 180px; } }
+
+/* ---- Confirmação (no lugar da caixa de mensagem do Windows) ---- */
+.modal.confirmacao { max-width: 360px; align-items: center; text-align: center; gap: 10px; padding: 24px 22px 18px; animation: confirmar .18s ease-out; }
+.confirmacao h2 { font-size: 15px; line-height: 1.35; }
+.confirmacao p { font-size: 13px; color: var(--text-2); line-height: 1.45; white-space: pre-line; }
+.confirmacao-icone { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); }
+.confirmacao-icone.perigo { background: color-mix(in srgb, #ff3b30 14%, transparent); color: #ff3b30; }
+.confirmacao-icone svg { width: 22px; height: 22px; }
+.confirmacao-botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-top: 8px; }
+.btn.primary.perigo { background: #ff3b30; border-color: #ff3b30; color: #fff; }
+@keyframes confirmar { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }

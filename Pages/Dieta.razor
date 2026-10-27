@@ -239,9 +239,9 @@
         _rolarParaFormulario = true;
     }
 
-    private void Excluir(RegistroPeso r)
+    private async Task Excluir(RegistroPeso r)
     {
-        if (!Dialogo.Confirmar($"Excluir o registro de {DataBR(r.Data)} ({Num(r.Peso)} kg)?")) return;
+        if (!await Dialogo.Confirmar($"Excluir o registro de {DataBR(r.Data)} ({Num(r.Peso)} kg)?")) return;
         Registros.Remove(r);
         if (_editId == r.Id) LimparFormulario();
         Store.Salvar();

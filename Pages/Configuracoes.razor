@@ -7,6 +7,7 @@
 @inject AvisosService Avisos
 @inject JanelaService Janela
 @inject IJSRuntime JS
+@inject BandejaService Bandeja
 
 @{
     var d = Store.Dados;
@@ -52,6 +53,17 @@
 </section>
 
 <section class="card">
+    <div class="card-head"><div><h2>Entretenimento</h2><p>Chaves gratuitas para buscar dados e capas automaticamente. Livros e animes funcionam sem chave.</p></div></div>
+    <div class="form-grid">
+        <label class="field"><span>Chave do TMDB (filmes, séries e animações)</span>
+            <input type="password" placeholder="Chave da API ou token de leitura" value="@cfg.ChaveTmdb" @onchange="e => SalvarChave(e, true)"></label>
+        <label class="field"><span>Chave do RAWG (jogos)</span>
+            <input type="password" placeholder="Chave da API" value="@cfg.ChaveRawg" @onchange="e => SalvarChave(e, false)"></label>
+    </div>
+    <p class="muted" style="margin-top:10px">Crie grátis em <b>themoviedb.org</b> → Configurações → API, e em <b>rawg.io/apidocs</b>.</p>
+</section>
+
+<section class="card">
     <div class="card-head"><div><h2>Armazenamento</h2><p>@ArmazenamentoService.CaminhoDados</p></div></div>
     <div class="storage-stats">
         <div><span>Registros de peso</span><b>@d.Dieta.Registros.Count</b></div>
@@ -60,6 +72,7 @@
         <div><span>Documentos</span><b>@d.Carro.Documentos.Count</b></div>
         <div><span>Veículos</span><b>@d.Carro.Veiculos.Count</b></div>
         <div><span>Assinaturas</span><b>@d.Assinaturas.Count</b></div>
+        <div><span>Entretenimento</span><b>@d.Entretenimento.Count</b></div>
         <div><span>Tamanho</span><b>@Num(Store.TamanhoKB(), 1) KB</b></div>
     </div>
 </section>
@@ -154,12 +167,21 @@
         Janela.TemaMudou(tema);
     }
 
+    private void SalvarChave(ChangeEventArgs e, bool tmdb)
+    {
+        var chave = e.Value?.ToString()?.Trim() is { Length: > 0 } k ? k : null;
+        if (tmdb) Store.Dados.Config.ChaveTmdb = chave; else Store.Dados.Config.ChaveRawg = chave;
+        Store.Salvar();
+        Toast.Ok(chave is null ? "Chave removida." : "Chave salva.");
+    }
+
     private async Task MudarCor(string valor)
     {
         Store.Dados.Config.CorDestaque = valor;
         Store.Salvar();
         var cor = CorDestaque.DaConfig(valor);
         await JS.InvokeVoidAsync("crankohub.aplicarDestaque", cor.Claro, cor.Escuro, cor.Texto);
+        Bandeja.AplicarCor(cor.Claro);
     }
 
     private Task MudarCorPersonalizada(ChangeEventArgs e) => MudarCor(e.Value?.ToString()?.ToUpperInvariant() ?? "azul");
@@ -235,9 +257,9 @@
         if (Backup.FazerAgora()) Toast.Ok("Backup feito.");
     }
 
-    private void Restaurar(FileInfo arquivo)
+    private async Task Restaurar(FileInfo arquivo)
     {
-        if (!Dialogo.Confirmar($"Substituir todos os dados atuais pelo backup \"{arquivo.Name}\"?")) return;
+        if (!await Dialogo.Confirmar($"Substituir todos os dados atuais pelo backup \"{arquivo.Name}\"?")) return;
         try
         {
             Store.Importar(File.ReadAllText(arquivo.FullName));
@@ -247,14 +269,14 @@
         catch (Exception ex) { Toast.Erro($"Não foi possível ler o backup: {ex.Message}"); }
     }
 
-    private void Importar()
+    private async Task Importar()
     {
         var caminho = Dialogo.AbrirBackup();
         if (caminho is null) return;
         try
         {
             var json = File.ReadAllText(caminho);
-            if (!Dialogo.Confirmar("Substituir todos os dados atuais pelo backup selecionado?")) return;
+            if (!await Dialogo.Confirmar("Substituir todos os dados atuais pelo backup selecionado?")) return;
             Store.Importar(json);
             Toast.Ok("Backup importado com sucesso!");
         }
@@ -268,18 +290,18 @@
         }
     }
 
-    private void CarregarExemplo()
+    private async Task CarregarExemplo()
     {
         var d = Store.Dados;
-        var temDados = d.Dieta.Registros.Count > 0 || d.Carro.Abastecimentos.Count > 0 || d.Carro.Manutencoes.Count > 0 || d.Assinaturas.Count > 0;
-        if (temDados && !Dialogo.Confirmar("Isso vai substituir seus dados atuais pelos dados de exemplo. Continuar?")) return;
+        var temDados = d.Dieta.Registros.Count > 0 || d.Carro.Abastecimentos.Count > 0 || d.Carro.Manutencoes.Count > 0 || d.Assinaturas.Count > 0 || d.Entretenimento.Count > 0;
+        if (temDados && !await Dialogo.Confirmar("Carregar os dados de exemplo?\nIsso vai substituir seus dados atuais.")) return;
         Store.CarregarExemplo();
-        Toast.Ok("Dados de exemplo carregados. Dê uma olhada em Dieta, Carro e Assinaturas!");
+        Toast.Ok("Dados de exemplo carregados. Dê uma olhada em Dieta, Carro, Assinaturas e Entretenimento!");
     }
 
-    private void ApagarTudo()
+    private async Task ApagarTudo()
     {
-        if (!Dialogo.Confirmar("Apagar TODOS os dados? Essa ação não pode ser desfeita.")) return;
+        if (!await Dialogo.Confirmar("Apagar TODOS os dados?\nEssa ação não pode ser desfeita.")) return;
         Store.Resetar();
         Toast.Ok("Todos os dados foram apagados.");
     }

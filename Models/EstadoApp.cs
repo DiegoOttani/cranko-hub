@@ -17,6 +17,8 @@ public class EstadoApp
 
     public List<Assinatura> Assinaturas { get; set; } = [];
 
+    public List<ItemEntretenimento> Entretenimento { get; set; } = [];
+
     public Configuracoes Config { get; set; } = new();
 }
 

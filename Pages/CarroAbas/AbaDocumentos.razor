@@ -162,7 +162,7 @@
         if (tipo.RenovaMeses is int meses && !restaPendente)
         {
             var proximo = x.Vencimento.AddMonths(meses);
-            if (Dialogo.Confirmar($"Cadastrar o {tipo.Nome} do próximo ano, vencendo em {DataBR(proximo)}?"))
+            if (await Dialogo.Confirmar($"Cadastrar o {tipo.Nome} do próximo ano, vencendo em {DataBR(proximo)}?"))
             {
                 Dados.Documentos.Add(new DocumentoCarro
                 {
@@ -177,7 +177,7 @@
 
     private async Task Excluir(DocumentoCarro x)
     {
-        if (!Dialogo.Confirmar($"Excluir \"{TipoDocumento.NomeDe(x.Tipo)}\" com vencimento em {DataBR(x.Vencimento)}?")) return;
+        if (!await Dialogo.Confirmar($"Excluir \"{TipoDocumento.NomeDe(x.Tipo)}\" com vencimento em {DataBR(x.Vencimento)}?")) return;
         Dados.Documentos.Remove(x);
         if (_editId == x.Id) Novo(_fTipo, rolar: false);
         Store.Salvar();

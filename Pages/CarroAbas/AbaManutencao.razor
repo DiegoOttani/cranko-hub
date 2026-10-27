@@ -256,7 +256,7 @@
 
     private async Task Excluir(Manutencao m)
     {
-        if (!Dialogo.Confirmar($"Excluir \"{TipoManutencao.NomeDe(m.Tipo)}\" de {DataBR(m.Data)}?")) return;
+        if (!await Dialogo.Confirmar($"Excluir \"{TipoManutencao.NomeDe(m.Tipo)}\" de {DataBR(m.Data)}?")) return;
         Dados.Manutencoes.Remove(m);
         if (_editId == m.Id) LimparFormulario();
         Store.Salvar();

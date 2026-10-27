@@ -18,6 +18,7 @@
             <NavLink href="dieta">@Icones.Dieta<span>Dieta</span></NavLink>
             <NavLink href="carro">@Icones.Carro<span>Carro</span></NavLink>
             <NavLink href="assinaturas">@Icones.Assinaturas<span>Assinaturas</span></NavLink>
+            <NavLink href="entretenimento">@Icones.Entretenimento<span>Entretenimento</span></NavLink>
             <div class="nav-sep"></div>
             <NavLink href="configuracoes">@Icones.Engrenagem<span>Configurações</span></NavLink>
         </nav>
@@ -39,6 +40,7 @@
 </div>
 
 <Toasts />
+<Confirmacao />
 
 @code {
     private bool _menuAberto;
@@ -49,6 +51,7 @@
         "dieta" => "Dieta",
         "carro" => "Carro",
         "assinaturas" => "Assinaturas",
+        "entretenimento" => "Entretenimento",
         "configuracoes" or "dados" => "Configurações",
         _ => "Início",
     };

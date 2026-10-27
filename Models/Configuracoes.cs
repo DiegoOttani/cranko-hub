@@ -29,4 +29,10 @@ public class Configuracoes
 
     /// <summary>Chave do alerta → dia em que foi avisado (cada alerta é avisado uma vez por dia).</summary>
     public Dictionary<string, DateOnly> AvisosEnviados { get; set; } = [];
+
+    /// <summary>Chave da API do TMDB (filmes, séries e animações).</summary>
+    public string? ChaveTmdb { get; set; }
+
+    /// <summary>Chave da API do RAWG (jogos).</summary>
+    public string? ChaveRawg { get; set; }
 }

@@ -256,9 +256,9 @@
         _rolarParaFormulario = true;
     }
 
-    private void Excluir(Assinatura a)
+    private async Task Excluir(Assinatura a)
     {
-        if (!Dialogo.Confirmar($"Excluir a assinatura \"{a.Nome}\"?\n\nSe você só cancelou o serviço, prefira editar e desmarcar \"Assinatura ativa\" para manter o histórico.")) return;
+        if (!await Dialogo.Confirmar($"Excluir a assinatura \"{a.Nome}\"?\n\nSe você só cancelou o serviço, prefira editar e desmarcar \"Assinatura ativa\" para manter o histórico.")) return;
         Lista.Remove(a);
         if (_editId == a.Id) LimparFormulario();
         Store.Salvar();

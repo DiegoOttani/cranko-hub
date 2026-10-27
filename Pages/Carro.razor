@@ -268,14 +268,14 @@
         Store.Salvar();
     }
 
-    private void ExcluirVeiculo()
+    private async Task ExcluirVeiculo()
     {
         if (Dados.Veiculos.Count == 1) { Toast.Erro("Você precisa ter pelo menos um veículo."); return; }
         var v = CarroCalculos.VeiculoAtivo(Dados);
         var qtdAbast = Dados.Abastecimentos.Count(a => a.VeiculoId == v.Id);
         var qtdManut = Dados.Manutencoes.Count(m => m.VeiculoId == v.Id);
         var qtdDocs = Dados.Documentos.Count(x => x.VeiculoId == v.Id);
-        if (!Dialogo.Confirmar($"Excluir \"{v.Nome}\" com seus {qtdAbast} abastecimentos, {qtdManut} manutenções e {qtdDocs} documentos?")) return;
+        if (!await Dialogo.Confirmar($"Excluir \"{v.Nome}\" com seus {qtdAbast} abastecimentos, {qtdManut} manutenções e {qtdDocs} documentos?")) return;
         Dados.Documentos.RemoveAll(x => x.VeiculoId == v.Id);
         Dados.Abastecimentos.RemoveAll(a => a.VeiculoId == v.Id);
         Dados.Manutencoes.RemoveAll(m => m.VeiculoId == v.Id);

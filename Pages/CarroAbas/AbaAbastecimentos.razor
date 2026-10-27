@@ -172,7 +172,7 @@
 
     private async Task Excluir(Abastecimento a)
     {
-        if (!Dialogo.Confirmar($"Excluir o abastecimento de {DataBR(a.Data)} ({Num(a.Litros, 2)} L)?")) return;
+        if (!await Dialogo.Confirmar($"Excluir o abastecimento de {DataBR(a.Data)} ({Num(a.Litros, 2)} L)?")) return;
         Dados.Abastecimentos.Remove(a);
         if (_editId == a.Id) LimparFormulario();
         Store.Salvar();

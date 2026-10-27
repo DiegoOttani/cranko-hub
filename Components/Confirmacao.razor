@@ -1,0 +1,77 @@
+@* Janela de confirmação no visual do app (substitui a caixa de mensagem do Windows) *@
+@implements IDisposable
+@inject IDialogoService Dialogo
+@inject IJSRuntime JS
+
+@if (_resposta is not null)
+{
+    <div class="modal-backdrop" @onclick="() => Responder(false)">
+        <div class="card modal confirmacao" role="alertdialog" aria-modal="true" @onclick:stopPropagation="true" @onkeydown="AoTeclar">
+            <span class="confirmacao-icone @(_perigo ? "perigo" : "")">@(_perigo ? Icones.Excluir : Icones.Info)</span>
+            <h2>@_titulo</h2>
+            @if (_texto.Length > 0)
+            {
+                <p>@_texto</p>
+            }
+            <div class="confirmacao-botoes">
+                <button class="btn" type="button" @onclick="() => Responder(false)">Cancelar</button>
+                <button class="btn primary @(_perigo ? "perigo" : "")" type="button" @ref="_botao" @onclick="() => Responder(true)">@_rotulo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private TaskCompletionSource<bool>? _resposta;
+    private ElementReference _botao;
+    private string _titulo = "", _texto = "", _rotulo = "";
+    private bool _perigo, _focar;
+
+    // Ações destrutivas ganham botão vermelho com o próprio verbo ("Excluir", "Apagar"...)
+    private static readonly string[] Verbos = ["Excluir", "Apagar", "Substituir"];
+
+    protected override void OnInitialized() => Dialogo.AoConfirmar += Perguntar;
+
+    private async Task<bool> Perguntar(string mensagem)
+    {
+        TaskCompletionSource<bool>? resposta = null;
+        await InvokeAsync(() => resposta = Mostrar(mensagem));
+        return await resposta!.Task;
+    }
+
+    private TaskCompletionSource<bool> Mostrar(string mensagem)
+    {
+        _resposta?.TrySetResult(false);
+        _resposta = new TaskCompletionSource<bool>();
+        var partes = mensagem.Split('\n', 2);
+        _titulo = partes[0].Trim();
+        _texto = partes.Length > 1 ? partes[1].Trim() : "";
+        var verbo = Verbos.FirstOrDefault(v => _titulo.StartsWith(v, StringComparison.OrdinalIgnoreCase));
+        _perigo = verbo is not null;
+        _rotulo = verbo ?? "Confirmar";
+        _focar = true;
+        StateHasChanged();
+        return _resposta;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focar) return;
+        _focar = false;
+        try { await _botao.FocusAsync(); } catch { }
+    }
+
+    private void AoTeclar(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Responder(false);
+    }
+
+    private void Responder(bool sim)
+    {
+        var r = _resposta;
+        _resposta = null;
+        r?.TrySetResult(sim);
+    }
+
+    public void Dispose() => Dialogo.AoConfirmar -= Perguntar;
+}

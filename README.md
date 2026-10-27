@@ -122,12 +122,14 @@ Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes 
 - Remédios com horário (notificação pela bandeja), consultas e exames com data.
 - Resultados de exames ao longo do tempo (ex.: colesterol, glicemia) em gráfico de linha.
 
-## 7. Entretenimento -> PROXIMO A SER FEITO 26-10-2026
+## 8. Lista de tarefas
 
-- Seria como se fosse um letterbox proprio, podendo colocar o que assistiu , quando, nota. Não precisamos de comentarios pois é um projeto offline.
-- As categorias serão: Filmes, Jogos, Animações, Livros, Series, Animes e por ai vai, cada um separado por sua categoria.
-- Ver se existe alguma API que nos forneça informações sobre o que foi assistido, para não precisar digitar tudo manualmente. Alem da imagem do filme.
-- Na hora de exibir a biblioteca, é como se fosse uma estante mesmo, com a capa do filme, jogo, livro, etc. E ao clicar na capa, abriria uma tela com as informações do que foi assistido. E na capa a sua nota.
+- Modulo para adicionar tarefas do dia a dia, como coisas do trabalho, com data de entrega, prioridade, etc. E ao concluir a tarefa, marcar como concluida. E no final do dia, mostrar um resumo das tarefas concluidas e das que não foram concluidas.
+
+## 9. Melhoria na configurações
+
+- Adicionar um modulo de plugin, onde é possivel escolher quais modulos vamos deixar visivel e quais não.
+- isso é util para nao deixar varias coisas inuteis na tela principal.
 
 ## Pendências de teste do que já existe
 
