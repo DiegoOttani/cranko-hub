@@ -54,14 +54,14 @@
 </section>
 
 <section class="card">
-    <div class="card-head"><div><h2>Entretenimento</h2><p>Chaves gratuitas para buscar dados e capas automaticamente. Livros e animes funcionam sem chave.</p></div></div>
+    <div class="card-head"><div><h2>Entretenimento</h2><p>A busca de dados e capas já funciona sem nenhuma chave. As chaves abaixo são opcionais e trazem mais resultados.</p></div></div>
     <div class="form-grid">
-        <label class="field"><span>Chave do TMDB (filmes, séries e animações)</span>
+        <label class="field"><span>Chave do TMDB (opcional: filmes, séries e animações)</span>
             <input type="password" placeholder="Chave da API ou token de leitura" value="@cfg.ChaveTmdb" @onchange="e => SalvarChave(e, true)"></label>
-        <label class="field"><span>Chave do RAWG (jogos)</span>
+        <label class="field"><span>Chave do RAWG (opcional: jogos)</span>
             <input type="password" placeholder="Chave da API" value="@cfg.ChaveRawg" @onchange="e => SalvarChave(e, false)"></label>
     </div>
-    <p class="muted" style="margin-top:10px">Crie grátis em <b>themoviedb.org</b> → Configurações → API, e em <b>rawg.io/apidocs</b>.</p>
+    <p class="muted" style="margin-top:10px">Sem chave, filmes, séries, animações e jogos vêm da <b>Wikipedia</b> e da <b>Wikidata</b> (pôsteres de séries pelo <b>TVmaze</b>); animes do <b>AniList</b> e livros da <b>Open Library</b>. Itens pouco conhecidos podem não estar lá: aí a chave ajuda (crie grátis em <b>themoviedb.org</b> → Configurações → API e em <b>rawg.io/apidocs</b>) ou cadastre manualmente.</p>
 </section>
 
 <section class="card">

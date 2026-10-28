@@ -38,7 +38,8 @@ servicos.AddSingleton<BandejaService>();
 servicos.AddSingleton<AvisosService>();
 servicos.AddSingleton<AtualizacaoService>();
 var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-http.DefaultRequestHeaders.UserAgent.ParseAdd("CrankoHub/1.0");
+// A Wikipedia/Wikidata bloqueia identificações genéricas: nome + endereço do projeto
+http.DefaultRequestHeaders.UserAgent.ParseAdd(EntretenimentoBusca.UserAgent);
 servicos.AddSingleton(http);
 servicos.AddSingleton<CapasService>();
 servicos.AddSingleton<EntretenimentoBusca>();

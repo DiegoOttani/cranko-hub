@@ -14,12 +14,16 @@ public record ResultadoBusca(string Titulo, int? Ano, string? UrlCapa, string? S
 public class BuscaException(string mensagem) : Exception(mensagem);
 
 /// <summary>
-/// Busca dados e capas nas APIs públicas: TMDB (filmes, séries, animações), RAWG (jogos),
-/// AniList (animes) e Open Library (livros). TMDB e RAWG precisam de chave (nas Configurações).
+/// Busca dados e capas nas APIs públicas. Sem nenhuma chave: Wikipedia em português + Wikidata
+/// (filmes, séries, animações e jogos; pôster das séries pelo TVmaze), AniList (animes) e Open Library (livros).
+/// Com as chaves opcionais das Configurações, filmes/séries usam o TMDB e jogos o RAWG, que trazem mais resultados.
 /// </summary>
 public partial class EntretenimentoBusca(HttpClient http, ArmazenamentoService store)
 {
     private const int Maximo = 12;
+
+    /// <summary>Identificação nas requisições (a Wikimedia limita quem não diz quem é).</summary>
+    public const string UserAgent = "CrankoHub/1.0 (https://github.com/DiegoOttani/MyProjs_)";
 
     public async Task<List<ResultadoBusca>> Buscar(CategoriaEntretenimento cat, string termo)
     {
@@ -29,6 +33,9 @@ public partial class EntretenimentoBusca(HttpClient http, ArmazenamentoService s
         {
             return cat.Api switch
             {
+                "tmdb-filme" when ChaveTmdb() is null => await Wikipedia("Info/Filme", termo),
+                "tmdb-serie" when ChaveTmdb() is null => await Wikipedia("Info/Televisão", termo),
+                "rawg" when ChaveRawg() is null => await Wikipedia("Info/Jogo eletrônico", termo),
                 "tmdb-filme" => await Tmdb("movie", termo),
                 "tmdb-serie" => await Tmdb("tv", termo),
                 "rawg" => await Rawg(termo),
@@ -64,9 +71,11 @@ public partial class EntretenimentoBusca(HttpClient http, ArmazenamentoService s
                         : Juntar(j["created_by"]?.AsArray().Select(c => Texto(c?["name"])));
                     return r with { Generos = generos ?? r.Generos, Criadores = criadores ?? r.Criadores, Sinopse = Texto(j["overview"]) ?? r.Sinopse };
                 }
+                case "wikipedia":
+                    return await DetalharWikipedia(r);
                 case "rawg":
                 {
-                    var j = await Get($"https://api.rawg.io/api/games/{r.FonteId}?key={Uri.EscapeDataString(ChaveRawg())}");
+                    var j = await Get($"https://api.rawg.io/api/games/{r.FonteId}?key={Uri.EscapeDataString(ChaveRawg() ?? "")}");
                     var devs = Juntar(j["developers"]?.AsArray().Select(d => Texto(d?["name"])));
                     return r with { Criadores = devs ?? r.Criadores, Sinopse = Texto(j["description_raw"]) ?? r.Sinopse };
                 }
@@ -97,7 +106,7 @@ public partial class EntretenimentoBusca(HttpClient http, ArmazenamentoService s
 
     private async Task<List<ResultadoBusca>> Rawg(string termo)
     {
-        var j = await Get($"https://api.rawg.io/api/games?page_size={Maximo}&search={Uri.EscapeDataString(termo)}&key={Uri.EscapeDataString(ChaveRawg())}");
+        var j = await Get($"https://api.rawg.io/api/games?page_size={Maximo}&search={Uri.EscapeDataString(termo)}&key={Uri.EscapeDataString(ChaveRawg() ?? "")}");
         return (j["results"]?.AsArray() ?? []).Select(x => new ResultadoBusca(
             Texto(x?["name"]) ?? "", Ano(Texto(x?["released"])), Texto(x?["background_image"]), null, null,
             Juntar(x?["genres"]?.AsArray().Select(g => Texto(g?["name"]))), "rawg", x?["id"]?.ToString() ?? "")).ToList();
@@ -131,20 +140,94 @@ public partial class EntretenimentoBusca(HttpClient http, ArmazenamentoService s
             "openlibrary", Texto(x?["key"]) ?? "")).ToList();
     }
 
+    // Busca só entre as páginas com a ficha (infobox) do tipo certo: Info/Filme, Info/Televisão, Info/Jogo eletrônico
+    private async Task<List<ResultadoBusca>> Wikipedia(string ficha, string termo)
+    {
+        var j = await Get(UrlWikipedia("generator=search&gsrlimit=" + Maximo
+            + "&gsrsearch=" + Uri.EscapeDataString($"{termo} hastemplate:\"{ficha}\"")
+            + "&prop=pageimages&piprop=thumbnail&pithumbsize=600"));
+        return (j["query"]?["pages"]?.AsArray() ?? [])
+            .OrderBy(x => (int?)x?["index"] ?? 99)
+            .Select(x =>
+            {
+                // "Dune (2021)", "Inside Out (filme de 2015)": tira o complemento do título e aproveita o ano
+                var titulo = Texto(x?["title"]) ?? "";
+                var m = Complemento().Match(titulo);
+                int? ano = m.Success && AnoNoTexto().Match(m.Value) is { Success: true } a ? int.Parse(a.Value) : null;
+                return new ResultadoBusca(m.Success ? titulo[..m.Index] : titulo, ano,
+                    Texto(x?["thumbnail"]?["source"]), null, null, null, "wikipedia", x?["pageid"]?.ToString() ?? "");
+            }).ToList();
+    }
+
+    // Resumo da Wikipedia + direção/criação, gêneros e data da Wikidata (e pôster do TVmaze para séries)
+    private async Task<ResultadoBusca> DetalharWikipedia(ResultadoBusca r)
+    {
+        var pagina = (await Get(UrlWikipedia($"pageids={r.FonteId}&prop=extracts|pageprops&exintro=1&explaintext=1&exsentences=4&ppprop=wikibase_item")))
+            ["query"]?["pages"]?[0];
+        var resumo = Texto(pagina?["extract"]);
+        // Muitos artigos usam o título original e trazem o brasileiro no resumo: "Inside Out (bra: Divertida Mente; prt: ...)"
+        var tituloBr = resumo is not null && TituloBrasil().Match(resumo) is { Success: true } t ? t.Groups[1].Value.Trim() : null;
+        r = r with { Sinopse = resumo ?? r.Sinopse, Titulo = tituloBr ?? r.Titulo };
+        if (Texto(pagina?["pageprops"]?["wikibase_item"]) is not string qid) return r;
+
+        var claims = (await Get($"https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims&ids={qid}"))
+            ["entities"]?[qid]?["claims"];
+        List<string> Itens(params string[] props) => props
+            .SelectMany(p => claims?[p]?.AsArray() ?? [])
+            .Select(c => Texto(c?["mainsnak"]?["datavalue"]?["value"]?["id"]))
+            .OfType<string>().Distinct().ToList();
+        // Direção (filmes), criação (séries) ou desenvolvimento (jogos)
+        var criadores = Itens("P57", "P170", "P178").Take(3).ToList();
+        var generos = Itens("P136").Take(3).ToList();
+        var nomes = await NomesWikidata(criadores.Concat(generos));
+        string? Nomes(List<string> ids) => Juntar(ids.Select(id => nomes.GetValueOrDefault(id)));
+
+        // Primeira data de publicação/estreia
+        var ano = new[] { "P577", "P580" }
+            .SelectMany(p => claims?[p]?.AsArray() ?? [])
+            .Select(c => Texto(c?["mainsnak"]?["datavalue"]?["value"]?["time"]) is string t ? Ano(t.TrimStart('+')) : null)
+            .Where(a => a is not null).Min();
+
+        var capa = r.UrlCapa;
+        if (claims?["P8600"]?[0]?["mainsnak"]?["datavalue"]?["value"] is JsonNode tvmaze && Texto(tvmaze) is string idTvmaze)
+            try { capa = Texto((await Get($"https://api.tvmaze.com/shows/{idTvmaze}"))["image"]?["original"]) ?? capa; } catch { }
+
+        return r with { Ano = ano ?? r.Ano, Criadores = Nomes(criadores) ?? r.Criadores, Generos = Nomes(generos) ?? r.Generos, UrlCapa = capa };
+    }
+
+    /// <summary>Nomes em português (ou inglês) dos itens da Wikidata.</summary>
+    private async Task<Dictionary<string, string>> NomesWikidata(IEnumerable<string> ids)
+    {
+        var lista = ids.Distinct().ToList();
+        if (lista.Count == 0) return [];
+        var j = await Get($"https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=labels&languages=pt-br|pt|en&ids={string.Join('|', lista)}");
+        var nomes = new Dictionary<string, string>();
+        foreach (var id in lista)
+        {
+            var rotulos = j["entities"]?[id]?["labels"];
+            if ((Texto(rotulos?["pt-br"]?["value"]) ?? Texto(rotulos?["pt"]?["value"]) ?? Texto(rotulos?["en"]?["value"])) is string nome)
+                nomes[id] = nome;
+        }
+        return nomes;
+    }
+
+    private static string UrlWikipedia(string parametros) =>
+        "https://pt.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&" + parametros;
+
     // ---- Auxiliares ----
 
-    private string ChaveTmdb() => store.Dados.Config.ChaveTmdb?.Trim() is { Length: > 0 } k ? k
-        : throw new BuscaException("Para buscar filmes, séries e animações, cole sua chave do TMDB nas Configurações.");
+    /// <summary>Chave do TMDB, se o usuário colou uma (é opcional).</summary>
+    private string? ChaveTmdb() => store.Dados.Config.ChaveTmdb?.Trim() is { Length: > 0 } k ? k : null;
 
-    private string ChaveRawg() => store.Dados.Config.ChaveRawg?.Trim() is { Length: > 0 } k ? k
-        : throw new BuscaException("Para buscar jogos, cole sua chave do RAWG nas Configurações.");
+    /// <summary>Chave do RAWG, se o usuário colou uma (é opcional).</summary>
+    private string? ChaveRawg() => store.Dados.Config.ChaveRawg?.Trim() is { Length: > 0 } k ? k : null;
 
     // A chave do TMDB pode ser a "Chave da API" (v3, curta) ou o "Token de leitura" (v4, longo)
     private string? Bearer() => ChaveTmdb() is { Length: > 40 } token ? token : null;
 
     private string UrlTmdb(string caminho, string parametros)
     {
-        var chave = ChaveTmdb();
+        var chave = ChaveTmdb() ?? "";
         var url = $"https://api.themoviedb.org/3/{caminho}?language=pt-BR&{parametros}";
         return chave.Length > 40 ? url : url + "&api_key=" + Uri.EscapeDataString(chave);
     }
@@ -168,4 +251,13 @@ public partial class EntretenimentoBusca(HttpClient http, ArmazenamentoService s
 
     [GeneratedRegex("<[^>]+>")]
     private static partial Regex Tags();
+
+    [GeneratedRegex(@"\s*\([^)]*\)$")]
+    private static partial Regex Complemento();
+
+    [GeneratedRegex(@"\b(1[89]|20)\d{2}\b")]
+    private static partial Regex AnoNoTexto();
+
+    [GeneratedRegex(@"\bbra:\s*([^;)]+)")]
+    private static partial Regex TituloBrasil();
 }
