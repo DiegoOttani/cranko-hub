@@ -23,7 +23,7 @@ public partial class EntretenimentoBusca(HttpClient http, ArmazenamentoService s
     private const int Maximo = 12;
 
     /// <summary>Identificação nas requisições (a Wikimedia limita quem não diz quem é).</summary>
-    public const string UserAgent = "CrankoHub/1.0 (https://github.com/DiegoOttani/MyProjs_)";
+    public const string UserAgent = "CrankoHub/1.0 (https://github.com/DiegoOttani/cranko-hub)";
 
     public async Task<List<ResultadoBusca>> Buscar(CategoriaEntretenimento cat, string termo)
     {

@@ -1,0 +1,64 @@
+# Gera o CrankoHub.exe e publica no GitHub Releases.
+# Para lançar uma versão:  git tag crankohub-v1.2.0  &&  git push origin crankohub-v1.2.0
+# O app instalado encontra a versão nova em Configurações → Atualizações.
+name: CrankoHub - Release
+
+on:
+  push:
+    tags: ['crankohub-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Versão da tag
+        id: versao
+        shell: bash
+        run: echo "valor=${GITHUB_REF_NAME#crankohub-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar
+        run: dotnet publish CrankoHub/CrankoHub.csproj -c Release -p:Version=${{ steps.versao.outputs.valor }} -o out
+
+      - name: Criar release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Se o Release já foi criado pelo site (Releases → Draft a new release), só anexa o .exe nele
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" out/CrankoHub.exe --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" out/CrankoHub.exe --title "CrankoHub ${{ steps.versao.outputs.valor }}" --generate-notes
+          fi
+
+  # Versão Linux (Photino), anexada ao mesmo Release depois que o job do Windows o criou
+  linux:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publicar
+        run: |
+          versao="${GITHUB_REF_NAME#crankohub-v}"
+          dotnet publish CrankoHub/Linux/CrankoHub.Linux.csproj -c Release -p:Version=$versao -o out
+          chmod +x out/CrankoHub out/instalar.sh
+          tar -czf CrankoHub-linux-x64.tar.gz -C out .
+
+      - name: Anexar ao release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" CrankoHub-linux-x64.tar.gz --clobber

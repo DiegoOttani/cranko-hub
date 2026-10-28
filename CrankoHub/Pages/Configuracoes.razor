@@ -175,14 +175,9 @@
 
 <section class="card">
     <div class="card-head">
-        <div><h2>Atualizações</h2><p>Versão instalada: <b>@AtualizacaoService.Texto(AtualizacaoService.VersaoAtual)</b>. As versões novas vêm do Releases do GitHub.</p></div>
+        <div><h2>Atualizações</h2><p>Versão instalada: <b>@AtualizacaoService.Texto(AtualizacaoService.VersaoAtual)</b>. As versões novas vêm do Releases do GitHub (<b>DiegoOttani/cranko-hub</b>).</p></div>
         <label class="check"><input type="checkbox" checked="@cfg.VerificarAtualizacoes" @onchange="@(e => Mudar(e, v => cfg.VerificarAtualizacoes = v))"> Verificar sozinho</label>
     </div>
-    <div class="form-grid">
-        <label class="field full"><span>Token do GitHub (só leitura)</span>
-            <input type="password" placeholder="github_pat_..." value="@cfg.TokenGitHub" @onchange="SalvarToken"></label>
-    </div>
-    <p class="muted" style="margin-top:10px">Crie em <b>GitHub → Settings → Developer settings → Fine-grained tokens</b>, só para o repositório <b>MyProjs_</b>, com permissão <b>Contents: Read-only</b>. Fica salvo só neste computador (e nos backups exportados).</p>
     @if (Atualizacao.Disponivel is { } nova)
     {
         <p style="margin-top:12px"><b>Versão @AtualizacaoService.Texto(nova.Versao) disponível</b> (@Num(nova.Tamanho / 1048576.0, 0) MB)</p>
@@ -201,7 +196,7 @@
         <p class="muted" style="margin-top:12px">Você está na versão mais recente.</p>
     }
     <div class="form-actions">
-        <button class="btn" type="button" disabled="@(_verificando || _progresso is not null || string.IsNullOrWhiteSpace(cfg.TokenGitHub))" @onclick="VerificarAtualizacao">
+        <button class="btn" type="button" disabled="@(_verificando || _progresso is not null)" @onclick="VerificarAtualizacao">
             @(_verificando ? "Verificando…" : "Verificar atualizações")</button>
         @if (Atualizacao.Disponivel is { } versaoNova)
         {
@@ -254,14 +249,6 @@
 
     private bool _verificando, _emDia;
     private double? _progresso;
-
-    private void SalvarToken(ChangeEventArgs e)
-    {
-        var token = e.Value?.ToString()?.Trim() is { Length: > 0 } t ? t : null;
-        Store.Dados.Config.TokenGitHub = token;
-        Store.Salvar();
-        Toast.Ok(token is null ? "Token removido." : "Token salvo.");
-    }
 
     private async Task VerificarAtualizacao()
     {

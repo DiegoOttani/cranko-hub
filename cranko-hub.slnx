@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CrankoHub/CrankoHub.csproj" />
+  <Project Path="CrankoHub/Linux/CrankoHub.Linux.csproj" />
+</Solution>

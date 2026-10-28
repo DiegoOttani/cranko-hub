@@ -3,7 +3,6 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
 
@@ -16,7 +15,7 @@ namespace CrankoHub.Services;
 /// </summary>
 public class AtualizacaoService(ArmazenamentoService store, BandejaService bandeja)
 {
-    private const string Repositorio = "DiegoOttani/MyProjs_";
+    private const string Repositorio = "DiegoOttani/cranko-hub";
     private const string PrefixoTag = "crankohub-v";
     private const string NomeArquivo = "CrankoHub-linux-x64.tar.gz";
 
@@ -45,7 +44,7 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
         using var req = Requisicao($"https://api.github.com/repos/{Repositorio}/releases?per_page=30", "application/vnd.github+json");
         using var resp = await Http.SendAsync(req);
         if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.NotFound)
-            throw new InvalidOperationException("Token inválido ou sem acesso ao repositório.");
+            throw new InvalidOperationException("Não foi possível consultar o repositório no GitHub (limite de consultas ou sem acesso). Tente mais tarde.");
         resp.EnsureSuccessStatusCode();
 
         using var json = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
@@ -132,7 +131,7 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
         _timer = new Timer(async _ =>
         {
             var cfg = store.Dados.Config;
-            if (!cfg.VerificarAtualizacoes || string.IsNullOrWhiteSpace(cfg.TokenGitHub) || cfg.UltimaVerificacaoAtualizacao == Formatacao.Hoje)
+            if (!cfg.VerificarAtualizacoes || cfg.UltimaVerificacaoAtualizacao == Formatacao.Hoje)
                 return;
             try
             {
@@ -163,11 +162,8 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
 
     private HttpRequestMessage Requisicao(string url, string aceita)
     {
-        var token = store.Dados.Config.TokenGitHub;
-        if (string.IsNullOrWhiteSpace(token))
-            throw new InvalidOperationException("Cole o token do GitHub nas Configurações para verificar atualizações.");
+        // Repositório público: o GitHub responde sem token (limite de 60 consultas por hora por IP)
         var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         req.Headers.Accept.ParseAdd(aceita);
         req.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
         return req;

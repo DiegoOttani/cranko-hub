@@ -18,7 +18,7 @@ Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes 
 - **Menu:** `Layout/LayoutPrincipal.razor` (NavLink + `TituloDaPagina`). Ícones em `Components/Icones.cs`.
 - **Publicar o .exe:** `dotnet publish -c Release -p:PublishProfile=win-x64` gera `publicar\CrankoHub.exe`.
 - **Lançar uma versão:** `git tag crankohub-v1.2.0` e `git push origin crankohub-v1.2.0`. O workflow `.github/workflows/crankohub-release.yml` compila e cria o Release com o `CrankoHub.exe`; a versão vem da tag.
-- **Atualizar os outros PCs:** Configurações → Atualizações → "Verificar atualizações" → "Atualizar agora" (`Services/AtualizacaoService.cs`). Precisa de um token fine-grained do GitHub só para o repositório `MyProjs_`, com *Contents: Read-only*, colado nesse card. PC novo: baixar o `CrankoHub.exe` do Releases e colar o token.
+- **Atualizar os outros PCs:** Configurações → Atualizações → "Verificar atualizações" → "Atualizar agora" (`Services/AtualizacaoService.cs`). Sem token: os Releases vêm do repositório público `DiegoOttani/cranko-hub`. PC novo: baixar o `CrankoHub.exe` do Releases.
 
 ---
 
@@ -167,27 +167,14 @@ Os dados ficam em `~/.local/share/CrankoHub/dados.json`, e os backups do Windows
 - Ícone na bandeja (AppIndicator), se fizer falta.
 - Os textos "Windows" em Configurações aparecem também no Linux.
 
-## 11. Repositório público e atualização automática sem token
+## 11. Repositório público e atualização automática sem token ✅ (feito)
 
-**Situação atual:** o atualizador (`Services/AtualizacaoService.cs` e `Linux/Plataforma/AtualizacaoService.cs`) consulta os Releases do repositório **privado** `DiegoOttani/MyProjs_`. Por isso o GitHub exige login, e cada usuário precisa criar um token e colar em **Configurações → Atualizações**. Para um app público, isso não serve.
-
-**Objetivo:** funcionar como o [ai-usagebar](https://github.com/akitaonrails/ai-usagebar). A pessoa baixa o app no GitHub, e ele mesmo avisa da versão nova e se atualiza com um botão, sem token nem configuração. Isso só funciona porque o repositório dele é **público**: a API de Releases e os downloads ficam abertos para qualquer um (até 60 consultas por hora por IP, de sobra para verificar uma vez por dia).
-
-**Plano (quando o CrankoHub for para um repositório próprio e público):**
-1. Criar o repositório público (ex.: `DiegoOttani/CrankoHub`) e mover para lá o código do CrankoHub e o workflow `crankohub-release.yml`, com as tags `crankohub-vX.Y.Z` (ou só `vX.Y.Z`).
-2. No `AtualizacaoService` (Windows e Linux):
-   - trocar a constante `Repositorio` pelo repositório novo;
-   - tirar a exigência do token em `Requisicao()`: sem `Authorization`;
-   - baixar o arquivo pelo `browser_download_url` do asset em vez de `releases/assets/{id}` com `Accept: application/octet-stream`;
-   - opcional: usar `releases/latest` em vez de listar 30 releases.
-3. Ligar "Verificar sozinho" por padrão (`Configuracoes.VerificarAtualizacoes`) e tirar a condição de token no `Iniciar()`.
-4. Em `Pages/Configuracoes.razor`: tirar o campo do token e o texto sobre "Fine-grained tokens"; o botão "Verificar atualizações" deixa de depender dele. O campo `TokenGitHub` em `Models/Configuracoes.cs` pode ficar, sem uso, para não quebrar backups antigos.
-5. Trocar o link em `EntretenimentoBusca.UserAgent` pelo endereço do repositório público.
-6. Opcional, para parecer mais com o ai-usagebar:
-   - item "Verificar atualizações" no menu da bandeja (`BandejaService`);
-   - clicar na notificação de versão nova abre direto a tela com o botão "Atualizar agora". Isso já funciona pelo link `configuracoes`.
-
-**O que já está pronto e não muda:** a lógica de comparar versões, baixar com progresso, trocar o `.exe` (Windows) ou a pasta (Linux) e reiniciar; o workflow que publica o `.exe` e o `.tar.gz` no mesmo Release.
+- O CrankoHub agora mora no repositório público [DiegoOttani/cranko-hub](https://github.com/DiegoOttani/cranko-hub), com o histórico trazido do `MyProjs_`. Na raiz ficam o `cranko-hub.slnx` (Windows + Linux), o `.gitignore` e o workflow `crankohub-release.yml`.
+- O `AtualizacaoService` (Windows e Linux) consulta os Releases **sem token**. O GitHub permite 60 consultas por hora por IP, de sobra para verificar uma vez por dia.
+- "Verificar sozinho" funciona sem configuração nenhuma, e o campo do token saiu de Configurações. `TokenGitHub` continua no modelo, sem uso, para não quebrar backups antigos.
+- O `UserAgent` da busca do Entretenimento aponta para o repositório novo.
+- **Atenção:** quem já tem o app instalado de antes continua olhando o `MyProjs_`. Nesses PCs, instale uma vez manualmente o `.exe` do primeiro Release do repositório novo; daí em diante ele se atualiza sozinho.
+- Ideia futura, para ficar como o ai-usagebar: item "Verificar atualizações" no menu da bandeja (`BandejaService`).
 
 ## 12. Usar em mais de um computador ✅ (feito, falta testar com dois PCs)
 
