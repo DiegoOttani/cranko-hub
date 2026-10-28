@@ -1,0 +1,225 @@
+@* Aba "Abastecimentos" do Carro: formulário de registro e histórico do veículo *@
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+@inject IJSRuntime JS
+
+@{
+    var list = DoVeiculo();
+    var st = CarroCalculos.Estatisticas(list);
+    var ed = Editando();
+}
+
+<form class="card" autocomplete="off" @ref="_formAbastecimento" @onsubmit="SalvarAbastecimento">
+    <div class="card-head"><div><h2>@(ed is not null ? "Editar abastecimento" : "Novo abastecimento")</h2><p>Informe os km rodados desde o último abastecimento e os litros colocados.</p></div></div>
+    <div class="form-grid cols-4">
+        <label class="field"><span>Data</span><input type="date" required @bind="_fData"></label>
+        <label class="field"><span>Combustível</span>
+            <select @bind="_fComb">
+                @foreach (var f in Combustivel.Todos)
+                {
+                    <option value="@f.Chave">@f.Nome</option>
+                }
+            </select></label>
+        <label class="field"><span>Km rodados *</span><input inputmode="decimal" required placeholder="ex.: 420" @bind="_fKm" @bind:event="oninput" @bind:after="@(() => AoDigitar("km"))"></label>
+        <label class="field"><span>Litros *</span><input inputmode="decimal" required placeholder="ex.: 36,5" @bind="_fLitros" @bind:event="oninput" @bind:after="@(() => AoDigitar("litros"))"></label>
+        <label class="field"><span>Valor total (R$)</span><input inputmode="decimal" placeholder="ex.: 215,90" @bind="_fValor" @bind:event="oninput" @bind:after="@(() => AoDigitar("valor"))"></label>
+        <label class="field"><span>Preço por litro (R$)</span><input inputmode="decimal" placeholder="calculado automaticamente" @bind="_fPreco" @bind:event="oninput" @bind:after="@(() => AoDigitar("preco"))"></label>
+        <label class="field"><span>Odômetro (opcional)</span><input inputmode="decimal" placeholder="preenche os km sozinho" @bind="_fOdometro" @bind:event="oninput" @bind:after="@(() => AoDigitar("odometro"))"></label>
+        <label class="field"><span>Posto</span><input maxlength="60" placeholder="opcional" @bind="_fPosto"></label>
+        <label class="field full"><span>Observação</span><input maxlength="140" placeholder="viagem, ar-condicionado ligado, trânsito..." @bind="_fObs"></label>
+    </div>
+    @{
+        var pKm = Pf(_fKm);
+        var pLitros = Pf(_fLitros);
+        var pValor = Pf(_fValor);
+    }
+    @if (pKm > 0 && pLitros > 0)
+    {
+        var k = pKm.Value / pLitros.Value;
+        <div class="preview">
+            <span>Consumo deste tanque: <b>@Num(k, 2) km/l</b></span>
+            @if (st.Media > 0 && ed is null) { <Delta Valor="(k / st.Media - 1) * 100" Unidade="% vs média" BomQuandoCai="false" /> }
+            @if (pValor > 0) { <span>· <b>@Money(pValor / pKm)</b>/km</span> }
+        </div>
+    }
+    <div class="form-actions">
+        <button class="btn primary" type="submit">@(ed is not null ? "Salvar alterações" : "Adicionar abastecimento")</button>
+        @if (ed is not null)
+        {
+            <button class="btn" type="button" @onclick="LimparFormulario">Cancelar</button>
+        }
+    </div>
+</form>
+
+<section class="card">
+    <div class="card-head"><div><h2>Histórico de abastecimentos</h2><p>@Veiculo.Nome · @list.Count @Plural(list.Count, "registro", "registros")</p></div></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Data</th><th>Combustível</th><th class="num">Km</th><th class="num">Litros</th><th class="num">km/l</th><th class="num">R$/L</th><th class="num">Total</th><th class="num">R$/km</th><th class="num">Odômetro</th><th>Posto / obs.</th><th></th></tr></thead>
+            <tbody>
+                @if (list.Count == 0)
+                {
+                    <tr><td colspan="11" class="empty-row">Nenhum abastecimento ainda. Adicione o primeiro acima ⬆</td></tr>
+                }
+                @foreach (var a in Enumerable.Reverse(list))
+                {
+                    <tr @key="a.Id">
+                        <td>@DataBR(a.Data)</td>
+                        <td><span class="fuel"><i style="background:@Combustivel.CorDe(a.Combustivel)"></i>@Combustivel.NomeDe(a.Combustivel)</span></td>
+                        <td class="num">@Num(a.Km, 1)</td>
+                        <td class="num">@Num(a.Litros, 2)</td>
+                        <td class="num"><b>@Num(a.Kml, 2)</b></td>
+                        <td class="num">@(a.Valor is not null ? Money(a.Valor / a.Litros) : Vazio)</td>
+                        <td class="num">@Money(a.Valor)</td>
+                        <td class="num">@(a.Valor is not null ? Money(a.Valor / a.Km) : Vazio)</td>
+                        <td class="num">@(a.Odometro is not null ? Num(a.Odometro, 0) : Vazio)</td>
+                        <td class="obs">@string.Join(" · ", new[] { a.Posto, a.Obs }.Where(s => !string.IsNullOrEmpty(s)))</td>
+                        <td><div class="row-actions">
+                            <button type="button" title="Editar" @onclick="() => Editar(a)">@Icones.Editar</button>
+                            <button type="button" class="del" title="Excluir" @onclick="() => Excluir(a)">@Icones.Excluir</button>
+                        </div></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Veiculo Veiculo { get; set; } = default!;
+
+    /// <summary>Avisa a página do Carro que os dados mudaram (atualiza resumo e contadores).</summary>
+    [Parameter] public EventCallback Alterado { get; set; }
+
+    private string? _editId;
+    private ElementReference _formAbastecimento;
+    private bool _rolarParaFormulario;
+
+    private DateOnly? _fData = Hoje;
+    private string _fComb = "gasolina";
+    private string _fKm = "", _fLitros = "", _fValor = "", _fPreco = "", _fOdometro = "", _fPosto = "", _fObs = "";
+    private bool _kmAutomatico; // km preenchido a partir do odômetro (pode ser recalculado)
+
+    private DadosCarro Dados => Store.Dados.Carro;
+
+    private List<Abastecimento> DoVeiculo() => CarroCalculos.DoVeiculo(Dados, Veiculo.Id);
+
+    private Abastecimento? Editando() => _editId is null ? null : Dados.Abastecimentos.FirstOrDefault(a => a.Id == _editId);
+
+    protected override void OnInitialized() => LimparFormulario();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_rolarParaFormulario) return;
+        _rolarParaFormulario = false;
+        await JS.InvokeVoidAsync("crankohub.rolarAte", _formAbastecimento);
+    }
+
+    private void LimparFormulario()
+    {
+        _editId = null;
+        _fData = Hoje;
+        _fComb = DoVeiculo().LastOrDefault()?.Combustivel ?? "gasolina";
+        _fKm = _fLitros = _fValor = _fPreco = _fOdometro = _fPosto = _fObs = "";
+        _kmAutomatico = false;
+    }
+
+    // Preenchimentos automáticos: odômetro → km, valor ↔ preço por litro
+    private void AoDigitar(string campo)
+    {
+        var litros = Pf(_fLitros);
+        var valor = Pf(_fValor);
+        var preco = Pf(_fPreco);
+        if (campo == "odometro")
+        {
+            var odometro = Pf(_fOdometro);
+            var anterior = OdometroAnterior();
+            if (odometro is not null && anterior is not null && odometro > anterior && (_fKm == "" || _kmAutomatico))
+            {
+                _fKm = InVal(odometro - anterior, 1);
+                _kmAutomatico = true;
+            }
+        }
+        if (campo == "km") _kmAutomatico = false;
+        if (campo is "valor" or "litros" && litros > 0 && valor > 0)
+            _fPreco = InVal(valor / litros, 3);
+        else if (campo is "preco" or "litros" && litros > 0 && preco > 0 && !(valor > 0 && campo == "litros"))
+            _fValor = InVal(preco * litros, 2);
+    }
+
+    private double? OdometroAnterior()
+    {
+        var data = _fData ?? Hoje;
+        return DoVeiculo().LastOrDefault(a => a.Id != _editId && a.Odometro is not null && a.Data <= data)?.Odometro;
+    }
+
+    private void Editar(Abastecimento a)
+    {
+        _editId = a.Id;
+        _fData = a.Data;
+        _fComb = a.Combustivel;
+        _fKm = InVal(a.Km, 1);
+        _fLitros = InVal(a.Litros, 2);
+        _fValor = InVal(a.Valor, 2);
+        _fPreco = a.Valor > 0 ? InVal(a.Valor / a.Litros, 3) : "";
+        _fOdometro = InVal(a.Odometro, 0);
+        _fPosto = a.Posto ?? "";
+        _fObs = a.Obs ?? "";
+        _kmAutomatico = false;
+        _rolarParaFormulario = true;
+    }
+
+    private async Task Excluir(Abastecimento a)
+    {
+        if (!await Dialogo.Confirmar($"Excluir o abastecimento de {DataBR(a.Data)} ({Num(a.Litros, 2)} L)?")) return;
+        Dados.Abastecimentos.Remove(a);
+        if (_editId == a.Id) LimparFormulario();
+        Store.Salvar();
+        Toast.Ok("Abastecimento excluído.");
+        await Alterado.InvokeAsync();
+    }
+
+    private async Task SalvarAbastecimento()
+    {
+        var km = Pf(_fKm);
+        var litros = Pf(_fLitros);
+        var valor = Pf(_fValor);
+        var preco = Pf(_fPreco);
+        if (valor is null && preco > 0 && litros > 0) valor = Math.Round(preco.Value * litros.Value, 2);
+        if (_fData is not DateOnly data) { Toast.Erro("Informe a data."); return; }
+        if (km is not > 0) { Toast.Erro("Informe quantos km você rodou."); return; }
+        if (litros is not > 0) { Toast.Erro("Informe quantos litros abasteceu."); return; }
+        if (km / litros > 60) { Toast.Erro("Consumo acima de 60 km/l — confira os valores."); return; }
+        if (valor is not null && valor is not > 0) { Toast.Erro("Valor inválido."); return; }
+
+        void Preencher(Abastecimento a)
+        {
+            a.Data = data;
+            a.Combustivel = _fComb;
+            a.Km = km.Value;
+            a.Litros = litros.Value;
+            a.Valor = valor;
+            a.Odometro = Pf(_fOdometro);
+            a.Posto = string.IsNullOrWhiteSpace(_fPosto) ? null : _fPosto.Trim();
+            a.Obs = string.IsNullOrWhiteSpace(_fObs) ? null : _fObs.Trim();
+        }
+
+        var ed = Editando();
+        if (ed is not null)
+        {
+            Preencher(ed);
+            Toast.Ok("Abastecimento atualizado.");
+        }
+        else
+        {
+            var novo = new Abastecimento { Id = ArmazenamentoService.NovoId(), VeiculoId = Veiculo.Id };
+            Preencher(novo);
+            Dados.Abastecimentos.Add(novo);
+            Toast.Ok($"Abastecimento salvo: {Num(km / litros, 2)} km/l");
+        }
+        Store.Salvar();
+        LimparFormulario();
+        await Alterado.InvokeAsync();
+    }
+}

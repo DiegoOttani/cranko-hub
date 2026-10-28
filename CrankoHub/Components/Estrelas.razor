@@ -1,0 +1,22 @@
+@* Nota de 0,5 a 5 em meias estrelas. Editável: cada estrela tem duas metades clicáveis; clicar na nota atual limpa. *@
+
+<span class="estrelas @(Editavel ? "editavel" : "")" title="@(Valor is double v ? Num(v, 1) + " de 5" : "Sem nota")">
+    <span class="estrelas-base">★★★★★</span>
+    <span class="estrelas-cheias" style="width:@((Valor ?? 0) / 5 * 100)%">★★★★★</span>
+    @if (Editavel)
+    {
+        @for (var i = 1; i <= 10; i++)
+        {
+            var nota = i / 2.0;
+            <button type="button" aria-label="@Num(nota, 1) estrelas" style="left:@((i - 1) * 10)%" @onclick="() => Escolher(nota)"></button>
+        }
+    }
+</span>
+
+@code {
+    [Parameter] public double? Valor { get; set; }
+    [Parameter] public EventCallback<double?> ValorChanged { get; set; }
+    [Parameter] public bool Editavel { get; set; }
+
+    private Task Escolher(double nota) => ValorChanged.InvokeAsync(Valor == nota ? null : nota);
+}

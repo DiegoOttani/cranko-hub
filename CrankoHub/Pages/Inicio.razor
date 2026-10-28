@@ -1,0 +1,248 @@
+@page "/"
+@inject ArmazenamentoService Store
+
+@{
+    var d = Store.Dados;
+    var rs = DietaCalculos.Ordenados(d.Dieta.Registros);
+    var last = rs.LastOrDefault();
+    var veic = CarroCalculos.VeiculoAtivo(d.Carro);
+    var abs = CarroCalculos.DoVeiculo(d.Carro, veic.Id);
+    var st = CarroCalculos.Estatisticas(abs);
+    var gastoMes = CarroCalculos.GastoNoMes(abs, Hoje);
+
+    // Peso de ~30 dias atrás (registro mais próximo)
+    double? var30 = null;
+    if (last is not null && rs.Count > 1)
+    {
+        var alvo = last.Data.DayNumber - 30;
+        var referencia = rs.MinBy(r => Math.Abs(r.Data.DayNumber - alvo))!;
+        if (referencia != last) var30 = last.Peso - referencia.Peso;
+    }
+    var meta = d.Dieta.Perfil.Meta;
+    var perdendo = meta is null || rs.Count == 0 || meta < rs[0].Peso;
+
+    var agora = DateTime.Now;
+    var saudacao = agora.Hour < 12 ? "Bom dia" : agora.Hour < 18 ? "Boa tarde" : "Boa noite";
+
+    var atividades = (Modulo.Visivel(d.Config, Modulo.Dieta) ? rs : []).TakeLast(6)
+        .Select(r => (r.Data, Icone: Icones.Balanca, Texto: $"{Num(r.Peso)} kg registrados", Sub: string.IsNullOrEmpty(r.Obs) ? "Dieta" : r.Obs))
+        .Concat((Modulo.Visivel(d.Config, Modulo.Carro) ? abs : []).TakeLast(6).Select(a => (a.Data, Icone: Icones.Bomba,
+            Texto: $"{Num(a.Litros, 1)} L de {Combustivel.NomeDe(a.Combustivel)}{(a.Valor > 0 ? " · " + Money(a.Valor) : "")}",
+            Sub: $"{veic.Nome} · {Num(a.Kml, 2)} km/l")))
+        .OrderByDescending(x => x.Data)
+        .Take(6)
+        .ToList();
+
+    var alertas = Alertas.Gerar(d, Hoje);
+    var resumo = TarefasCalculos.ResumoDoDia(d.Tarefas, Hoje);
+    var assinAtivas = d.Assinaturas.Where(a => a.Ativa).ToList();
+    var custoAssin = assinAtivas.Sum(AssinaturasCalculos.PorMes);
+    var proximasCobrancas = AssinaturasCalculos.CobrancasAte(assinAtivas, Hoje, 30);
+
+    var cfg = d.Config;
+    var (verDieta, verCarro, verAssin, verEnt, verTarefas) = (Modulo.Visivel(cfg, Modulo.Dieta), Modulo.Visivel(cfg, Modulo.Carro),
+        Modulo.Visivel(cfg, Modulo.Assinaturas), Modulo.Visivel(cfg, Modulo.Entretenimento), Modulo.Visivel(cfg, Modulo.Tarefas));
+
+    // Mini-gráficos: últimos 90 dias
+    var corte = Hoje.AddDays(-90);
+}
+
+<section class="hero">
+    <p class="eyebrow">@DataPorExtenso(agora)</p>
+    <h1>@(saudacao)!</h1>
+    <p>Seu painel pessoal de parâmetros. Escolha uma área para registrar e acompanhar sua evolução.</p>
+</section>
+
+<div class="grid-2 @(verAssin ? "" : "um")">
+    <section class="card">
+        <div class="card-head"><div><h2>Precisa de atenção</h2><p>@(alertas.Count > 0 ? $"{alertas.Count} {Plural(alertas.Count, "item", "itens")} para resolver" : "Lembretes de todas as áreas")</p></div></div>
+        @if (alertas.Count > 0)
+        {
+            <ul class="activity alertas">
+                @foreach (var a in alertas)
+                {
+                    <li @key="a.Chave">
+                        <a href="@a.Link">
+                            <span class="a-icon">@a.Icone</span>
+                            <div class="a-text">@a.Titulo<small>@a.Detalhe</small></div>
+                            <span class="badge @a.Classe">@a.Badge</span>
+                        </a>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <div class="chart-empty"><span>Tudo em dia por aqui. ✓</span></div>
+        }
+    </section>
+    @if (verAssin)
+    {
+        <a class="card link-card" href="assinaturas">
+            <div class="link-head">
+                <span class="link-icon">@Icones.Assinaturas</span>
+                <div><h2>Assinaturas</h2><p>Serviços recorrentes e cobranças</p></div>
+                <span class="go">@Icones.Seta</span>
+            </div>
+            <div class="mini-stats">
+                <div><span>Custo mensal</span><b>@Money(custoAssin)</b></div>
+                <div><span>Ativas</span><b>@assinAtivas.Count</b></div>
+                <div><span>Próx. 30 dias</span><b>@Money(proximasCobrancas.Sum(c => c.Assinatura.Valor))</b></div>
+            </div>
+            @if (proximasCobrancas.Count > 0)
+            {
+                <ul class="activity">
+                    @foreach (var (a, data) in proximasCobrancas.Take(4))
+                    {
+                        var (texto, classe) = AssinaturasCalculos.Prazo(data.DayNumber - Hoje.DayNumber);
+                        <li>
+                            <div class="a-text">@a.Nome<small>@Money(a.Valor) · @DataBR(data)</small></div>
+                            <span class="badge @classe">@texto</span>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <div class="chart-empty"><span>Nenhuma cobrança nos próximos 30 dias.</span></div>
+            }
+        </a>
+    }
+</div>
+
+@if (verDieta || verCarro)
+{
+    <div class="grid-2 @(verDieta && verCarro ? "" : "um")">
+        @if (verDieta)
+        {
+            <a class="card link-card" href="dieta">
+                <div class="link-head">
+                    <span class="link-icon">@Icones.Coracao</span>
+                    <div><h2>Dieta</h2><p>Peso, medidas, IMC e meta</p></div>
+                    <span class="go">@Icones.Seta</span>
+                </div>
+                <div class="mini-stats">
+                    <div><span>Peso atual</span><b>@(last is not null ? Num(last.Peso) + " kg" : Vazio)</b></div>
+                    <div><span>Últimos 30 dias</span><b>@if (var30 is not null) { <Delta Valor="var30" Unidade=" kg" BomQuandoCai="perdendo" /> } else { @Vazio }</b></div>
+                    <div><span>Meta</span><b>@(meta is not null ? Num(meta) + " kg" : Vazio)</b></div>
+                </div>
+                <GraficoLinha Altura="150" Formato="FormatoNumero.Kg" MsgVazia="Sem pesos nos últimos 90 dias."
+                              Series="@([new SerieLinha("Peso", "var(--series-1)", rs.Where(r => r.Data > corte).Select(r => new PontoLinha(r.Data, r.Peso)).ToList(), Markers: false, Area: true)])" />
+            </a>
+        }
+        @if (verCarro)
+        {
+            <a class="card link-card" href="carro">
+                <div class="link-head">
+                    <span class="link-icon">@Icones.Carro</span>
+                    <div><h2>Carro</h2><p>@veic.Nome · consumo e custos</p></div>
+                    <span class="go">@Icones.Seta</span>
+                </div>
+                <div class="mini-stats">
+                    <div><span>Consumo médio</span><b>@(st.Media is not null ? Num(st.Media) + " km/l" : Vazio)</b></div>
+                    <div><span>Custo por km</span><b>@Money(st.CustoKm)</b></div>
+                    <div><span>Gasto no mês</span><b>@Money(gastoMes)</b></div>
+                </div>
+                <GraficoLinha Altura="150" FormatoY="new FormatoNumero(1)" Formato="@(new FormatoNumero(2, " km/l"))" MsgVazia="Sem abastecimentos nos últimos 90 dias."
+                              Series="@([new SerieLinha("Consumo", "var(--series-1)", abs.Where(a => a.Data > corte).Select(a => new PontoLinha(a.Data, a.Kml)).ToList(), Markers: false, Area: true)])" />
+            </a>
+        }
+    </div>
+}
+
+@if (verTarefas)
+{
+    <a class="card link-card" href="tarefas?quadro=hoje">
+        <div class="link-head">
+            <span class="link-icon">@Icones.Tarefas</span>
+            <div><h2>Tarefas de hoje</h2><p>Resumo do dia em todos os quadros</p></div>
+            <span class="go">@Icones.Seta</span>
+        </div>
+        <div class="mini-stats">
+            <div><span>Concluídas hoje</span><b>@resumo.ConcluidosHoje.Count</b></div>
+            <div><span>Para hoje</span><b>@resumo.ParaHoje.Count</b></div>
+            <div><span>Atrasadas</span><b>@resumo.Atrasados.Count</b></div>
+        </div>
+        @{ var pendentesHoje = resumo.Atrasados.Concat(resumo.ParaHoje).Take(4).ToList(); }
+        @if (pendentesHoje.Count > 0)
+        {
+            <ul class="activity">
+                @foreach (var c in pendentesHoje)
+                {
+                    var q = TarefasCalculos.QuadroDe(d.Tarefas, c);
+                    <li>
+                        <div class="a-text">@c.Titulo<small>@(q is null ? "" : TarefasCalculos.NomeQuadro(q))</small></div>
+                        @if (c.Prazo is DateOnly p)
+                        {
+                            var (texto, classe) = TarefasCalculos.Prazo(p, Hoje);
+                            <span class="badge @classe">@texto</span>
+                        }
+                        else
+                        {
+                            <span class="badge">foco</span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <div class="chart-empty"><span>@(resumo.ConcluidosHoje.Count > 0 ? "Tudo o que era para hoje está feito. ✓" : "Nenhuma tarefa para hoje.")</span></div>
+        }
+    </a>
+}
+
+@if (verEnt)
+{
+    <a class="card link-card" href="entretenimento">
+        <div class="link-head">
+            <span class="link-icon">@Icones.Entretenimento</span>
+            <div><h2>Entretenimento</h2><p>@d.Entretenimento.Count @Plural(d.Entretenimento.Count, "item", "itens") na estante · @d.Entretenimento.Count(e => e.Status == "concluido" && e.Data?.Year == Hoje.Year) em @Hoje.Year</p></div>
+            <span class="go">@Icones.Seta</span>
+        </div>
+        @if (d.Entretenimento.Count > 0)
+        {
+            <div class="estante-mini">
+                @foreach (var e in d.Entretenimento.OrderByDescending(e => e.Data ?? DateOnly.MinValue).Take(12))
+                {
+                    <Capa Item="e" />
+                }
+            </div>
+        }
+        else
+        {
+            <div class="chart-empty"><span>Sua estante ainda está vazia.</span></div>
+        }
+    </a>
+}
+
+@if (verDieta || verCarro)
+{
+    <section class="card">
+        <div class="card-head"><div><h2>Atividade recente</h2><p>Seus últimos registros em todas as áreas.</p></div></div>
+        @if (atividades.Count > 0)
+        {
+            <ul class="activity">
+                @foreach (var a in atividades)
+                {
+                    <li>
+                        <span class="a-icon">@a.Icone</span>
+                        <div class="a-text">@a.Texto<small>@a.Sub</small></div>
+                        <time>@DataBR(a.Data)</time>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <div class="chart-empty"><span>Nada registrado ainda. Comece pela <a href="dieta">Dieta</a> ou pelo <a href="carro">Carro</a> — ou carregue dados de exemplo em <a href="configuracoes">Configurações</a>.</span></div>
+        }
+    </section>
+}
+
+@if (!Modulo.Visiveis(cfg).Any())
+{
+    <section class="card">
+        <div class="chart-empty"><span>Todos os módulos estão escondidos. Escolha o que mostrar em <a href="configuracoes">Configurações</a>.</span></div>
+    </section>
+}

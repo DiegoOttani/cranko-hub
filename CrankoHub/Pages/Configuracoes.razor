@@ -1,0 +1,473 @@
+@page "/configuracoes"
+@page "/dados"
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+@inject BackupService Backup
+@inject AvisosService Avisos
+@inject JanelaService Janela
+@inject IJSRuntime JS
+@inject BandejaService Bandeja
+@inject AtualizacaoService Atualizacao
+
+@{
+    var d = Store.Dados;
+    var cfg = d.Config;
+    var backups = Backup.Listar();
+}
+
+<div class="page-head">
+    <div>
+        <h1>Configurações</h1>
+        <p>Aparência, aplicativo, backup e dados. Tudo fica salvo automaticamente neste computador.</p>
+    </div>
+</div>
+
+<section class="card">
+    <div class="card-head"><div><h2>Aparência</h2><p>Tema e cor de destaque do aplicativo.</p></div></div>
+    @{
+        var corAtual = CorDestaque.DaConfig(cfg.CorDestaque);
+        var personalizada = !CorDestaque.Paleta.Contains(corAtual);
+    }
+    <div class="aparencia">
+        <span>Tema</span>
+        <div class="chips">
+            @foreach (var (valor, rotulo) in Temas)
+            {
+                <button type="button" class="chip @(d.Tema == valor ? "active" : "")" @onclick="() => MudarTema(valor)">@rotulo</button>
+            }
+        </div>
+        <span>Cor de destaque</span>
+        <div class="paleta">
+            @foreach (var c in CorDestaque.Paleta)
+            {
+                <button type="button" class="cor @(c == corAtual ? "ativa" : "")" title="@c.Nome" aria-label="@c.Nome"
+                        style="background:@c.Claro;--cor:@c.Claro" @onclick="() => MudarCor(c.Chave)"></button>
+            }
+            <label class="cor cor-personalizada @(personalizada ? "ativa" : "")" title="Personalizada"
+                   style="@(personalizada ? $"background:{corAtual.Claro};--cor:{corAtual.Claro}" : "")">
+                <input type="color" value="@(personalizada ? corAtual.Claro.ToLowerInvariant() : "#5856d6")" @onchange="MudarCorPersonalizada">
+            </label>
+            <span class="muted">@corAtual.Nome</span>
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head"><div><h2>Módulos</h2><p>Escolha o que aparece no menu, no Início e nos avisos. Esconder um módulo não apaga os dados dele.</p></div></div>
+    <div class="opcoes">
+        @foreach (var m in Modulo.Todos)
+        {
+            <label class="check" @key="m.Id"><input type="checkbox" checked="@Modulo.Visivel(cfg, m.Id)" @onchange="@(e => Store.MostrarModulo(m.Id, e.Value is true))"> <b>@m.Nome</b> <span class="muted">· @m.Descricao</span></label>
+        }
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head"><div><h2>Entretenimento</h2><p>A busca de dados e capas já funciona sem nenhuma chave. As chaves abaixo são opcionais e trazem mais resultados.</p></div></div>
+    <div class="form-grid">
+        <label class="field"><span>Chave do TMDB (opcional: filmes, séries e animações)</span>
+            <input type="password" placeholder="Chave da API ou token de leitura" value="@cfg.ChaveTmdb" @onchange="e => SalvarChave(e, true)"></label>
+        <label class="field"><span>Chave do RAWG (opcional: jogos)</span>
+            <input type="password" placeholder="Chave da API" value="@cfg.ChaveRawg" @onchange="e => SalvarChave(e, false)"></label>
+    </div>
+    <p class="muted" style="margin-top:10px">Sem chave, filmes, séries, animações e jogos vêm da <b>Wikipedia</b> e da <b>Wikidata</b> (pôsteres de séries pelo <b>TVmaze</b>); animes do <b>AniList</b> e livros da <b>Open Library</b>. Itens pouco conhecidos podem não estar lá: aí a chave ajuda (crie grátis em <b>themoviedb.org</b> → Configurações → API e em <b>rawg.io/apidocs</b>) ou cadastre manualmente.</p>
+</section>
+
+<section class="card">
+    <div class="card-head"><div><h2>Armazenamento</h2><p>@ArmazenamentoService.CaminhoDados@(ArmazenamentoService.Sincronizada ? " · sincronizada" : "")</p></div></div>
+    <div class="storage-stats">
+        <div><span>Registros de peso</span><b>@d.Dieta.Registros.Count</b></div>
+        <div><span>Abastecimentos</span><b>@d.Carro.Abastecimentos.Count</b></div>
+        <div><span>Manutenções</span><b>@d.Carro.Manutencoes.Count</b></div>
+        <div><span>Documentos</span><b>@d.Carro.Documentos.Count</b></div>
+        <div><span>Veículos</span><b>@d.Carro.Veiculos.Count</b></div>
+        <div><span>Assinaturas</span><b>@d.Assinaturas.Count</b></div>
+        <div><span>Entretenimento</span><b>@d.Entretenimento.Count</b></div>
+        <div><span>Tarefas</span><b>@d.Tarefas.Cards.Count</b></div>
+        <div><span>Tamanho</span><b>@Num(Store.TamanhoKB(), 1) KB</b></div>
+    </div>
+    <div class="sincronia">
+        <h3>Usar em mais de um computador</h3>
+        @if (ArmazenamentoService.Sincronizada)
+        {
+            <p class="muted">Os dados estão numa <b>pasta sincronizada</b>. Os outros computadores que apontarem para ela veem as mesmas informações, e mudanças feitas lá aparecem aqui sozinhas.</p>
+        }
+        else
+        {
+            <p class="muted">Escolha uma pasta do <b>OneDrive</b>, <b>Google Drive</b> ou <b>Dropbox</b> (ex.: <code>OneDrive\CrankoHub</code>) e faça o mesmo no outro computador. Evite usar os dois ao mesmo tempo: se acontecer, nada se perde, a outra versão fica guardada como cópia de conflito.</p>
+        }
+        @if (ArmazenamentoService.PastaSincronizadaSumiu)
+        {
+            <p class="aviso-sincronia">A pasta sincronizada <b>@ConfigLocal.Atual.PastaDados</b> não foi encontrada, então os dados locais estão em uso. Confira se o OneDrive/Google Drive está conectado e reinicie o app.</p>
+        }
+        @{ var conflitos = ArmazenamentoService.Conflitos(); }
+        @if (conflitos.Count > 0)
+        {
+            <p class="aviso-sincronia">@conflitos.Count @Plural(conflitos.Count, "cópia", "cópias") de conflito na pasta (@string.Join(", ", conflitos.Select(Path.GetFileName))). Confira se falta algo e, se quiser, importe pelo backup abaixo; depois pode apagar.</p>
+        }
+        <div class="form-actions">
+            <button class="btn" type="button" @onclick="UsarPastaSincronizada">@(ArmazenamentoService.Sincronizada ? "Trocar pasta…" : "Usar pasta sincronizada…")</button>
+            @if (ArmazenamentoService.Sincronizada || ArmazenamentoService.PastaSincronizadaSumiu)
+            {
+                <button class="btn" type="button" @onclick="VoltarParaLocal">Voltar para a pasta local</button>
+            }
+            <button class="btn" type="button" @onclick="AbrirPastaDados">Abrir pasta</button>
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Backup automático</h2><p>Uma cópia por dia, feita ao abrir o app. Dica: escolha uma pasta do OneDrive ou Google Drive para ter o backup também na nuvem.</p></div>
+        <label class="check"><input type="checkbox" checked="@cfg.BackupAutomatico" @onchange="AlternarAutomatico"> Ativado</label>
+    </div>
+    <div class="form-grid">
+        <div class="field full"><span>Pasta</span>
+            <div class="linha-pasta">
+                <input readonly value="@(cfg.PastaBackup ?? "")" placeholder="nenhuma pasta escolhida">
+                <button class="btn" type="button" @onclick="EscolherPasta">Escolher…</button>
+            </div></div>
+        <label class="field"><span>Manter os últimos</span>
+            <select value="@cfg.BackupsMantidos" @onchange="MudarMantidos">
+                @foreach (var n in new[] { 3, 5, 10, 15, 30 })
+                {
+                    <option value="@n">@n backups</option>
+                }
+            </select></label>
+        <div class="field"><span>Último backup</span><b>@(cfg.UltimoBackup is DateOnly u ? DataBR(u) : "nunca")</b></div>
+    </div>
+    <div class="form-actions">
+        <button class="btn primary" type="button" disabled="@string.IsNullOrWhiteSpace(cfg.PastaBackup)" @onclick="FazerAgora">Fazer backup agora</button>
+    </div>
+    @if (backups.Count > 0)
+    {
+        <div class="table-wrap" style="margin-top:16px">
+            <table>
+                <thead><tr><th>Arquivo</th><th>Salvo em</th><th class="num">Tamanho</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var f in backups)
+                    {
+                        <tr @key="f.Name">
+                            <td>@f.Name</td>
+                            <td>@f.LastWriteTime.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="num">@Num(f.Length / 1024.0, 1) KB</td>
+                            <td><button class="btn sm" type="button" @onclick="() => Restaurar(f)">Restaurar</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="card">
+    <div class="card-head"><div><h2>Aplicativo</h2><p>Ícone na bandeja do Windows (perto do relógio) e notificações dos vencimentos.</p></div></div>
+    <div class="opcoes">
+        <label class="check"><input type="checkbox" checked="@cfg.MinimizarParaBandeja" @onchange="@(e => Mudar(e, v => cfg.MinimizarParaBandeja = v))"> Ao fechar a janela, continuar rodando na bandeja</label>
+        <label class="check"><input type="checkbox" checked="@cfg.Avisos" @onchange="@(e => Mudar(e, v => cfg.Avisos = v))"> Mostrar notificações (manutenção, documentos, assinaturas, peso, backup)</label>
+        <label class="check"><input type="checkbox" checked="@(ConfigLocal.Atual.IniciarComWindows == true)" @onchange="MudarInicioWindows"> Iniciar com o Windows (abre direto na bandeja)</label>
+    </div>
+    <div class="form-actions">
+        <button class="btn" type="button" @onclick="() => Avisos.Verificar(manual: true)">Testar notificação</button>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Atualizações</h2><p>Versão instalada: <b>@AtualizacaoService.Texto(AtualizacaoService.VersaoAtual)</b>. As versões novas vêm do Releases do GitHub.</p></div>
+        <label class="check"><input type="checkbox" checked="@cfg.VerificarAtualizacoes" @onchange="@(e => Mudar(e, v => cfg.VerificarAtualizacoes = v))"> Verificar sozinho</label>
+    </div>
+    <div class="form-grid">
+        <label class="field full"><span>Token do GitHub (só leitura)</span>
+            <input type="password" placeholder="github_pat_..." value="@cfg.TokenGitHub" @onchange="SalvarToken"></label>
+    </div>
+    <p class="muted" style="margin-top:10px">Crie em <b>GitHub → Settings → Developer settings → Fine-grained tokens</b>, só para o repositório <b>MyProjs_</b>, com permissão <b>Contents: Read-only</b>. Fica salvo só neste computador (e nos backups exportados).</p>
+    @if (Atualizacao.Disponivel is { } nova)
+    {
+        <p style="margin-top:12px"><b>Versão @AtualizacaoService.Texto(nova.Versao) disponível</b> (@Num(nova.Tamanho / 1048576.0, 0) MB)</p>
+        @if (!string.IsNullOrWhiteSpace(nova.Notas))
+        {
+            <p class="muted" style="white-space:pre-wrap;margin-top:6px">@nova.Notas</p>
+        }
+        @if (_progresso is double p)
+        {
+            <div class="progress"><div style="width:@Num(p * 100, 0)%"></div></div>
+            <div class="progress-legend"><span>Baixando…</span><b>@Num(p * 100, 0)%</b></div>
+        }
+    }
+    else if (_emDia)
+    {
+        <p class="muted" style="margin-top:12px">Você está na versão mais recente.</p>
+    }
+    <div class="form-actions">
+        <button class="btn" type="button" disabled="@(_verificando || _progresso is not null || string.IsNullOrWhiteSpace(cfg.TokenGitHub))" @onclick="VerificarAtualizacao">
+            @(_verificando ? "Verificando…" : "Verificar atualizações")</button>
+        @if (Atualizacao.Disponivel is { } versaoNova)
+        {
+            <button class="btn primary" type="button" disabled="@(_progresso is not null)" @onclick="() => Atualizar(versaoNova)">Atualizar agora</button>
+        }
+    </div>
+</section>
+
+<div class="grid-2">
+    <section class="card action-card">
+        <h2>Exportar backup</h2>
+        <p>Salva um arquivo <b>.json</b> com todos os seus dados. Guarde no Drive, e-mail ou pendrive.</p>
+        <button class="btn primary" type="button" @onclick="Exportar">Salvar backup…</button>
+    </section>
+    <section class="card action-card">
+        <h2>Importar backup</h2>
+        <p>Restaura um arquivo exportado antes (do CrankoHub ou do antigo ClaudeParameters). <b>Substitui</b> os dados atuais.</p>
+        <button class="btn" type="button" @onclick="Importar">Escolher arquivo…</button>
+    </section>
+    <section class="card action-card">
+        <h2>Dados de exemplo</h2>
+        <p>Preenche o app com ~5 meses de pesos e ~8 meses de abastecimentos e manutenções e algumas assinaturas fictícias para você explorar os gráficos. <b>Substitui</b> os dados atuais.</p>
+        <button class="btn" type="button" @onclick="CarregarExemplo">Carregar exemplo</button>
+    </section>
+    <section class="card action-card">
+        <h2>Apagar tudo</h2>
+        <p>Remove todos os registros, veículos, manutenções e assinaturas. Não dá para desfazer — exporte um backup antes.</p>
+        <button class="btn danger" type="button" @onclick="ApagarTudo">Apagar todos os dados</button>
+    </section>
+</div>
+
+@code {
+    private static readonly (string? Valor, string Rotulo)[] Temas = [("light", "Claro"), ("dark", "Escuro"), (null, "Automático")];
+
+    private async Task MudarTema(string? tema)
+    {
+        Store.Dados.Tema = tema;
+        Store.Salvar();
+        await JS.InvokeVoidAsync("crankohub.aplicarTema", tema);
+        Janela.TemaMudou(tema);
+    }
+
+    private void SalvarChave(ChangeEventArgs e, bool tmdb)
+    {
+        var chave = e.Value?.ToString()?.Trim() is { Length: > 0 } k ? k : null;
+        if (tmdb) Store.Dados.Config.ChaveTmdb = chave; else Store.Dados.Config.ChaveRawg = chave;
+        Store.Salvar();
+        Toast.Ok(chave is null ? "Chave removida." : "Chave salva.");
+    }
+
+    private bool _verificando, _emDia;
+    private double? _progresso;
+
+    private void SalvarToken(ChangeEventArgs e)
+    {
+        var token = e.Value?.ToString()?.Trim() is { Length: > 0 } t ? t : null;
+        Store.Dados.Config.TokenGitHub = token;
+        Store.Salvar();
+        Toast.Ok(token is null ? "Token removido." : "Token salvo.");
+    }
+
+    private async Task VerificarAtualizacao()
+    {
+        _verificando = true;
+        _emDia = false;
+        try
+        {
+            _emDia = await Atualizacao.VerificarAsync() is null;
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro(ex is InvalidOperationException ? ex.Message : $"Não foi possível verificar: {ex.Message}");
+        }
+        _verificando = false;
+    }
+
+    private async Task Atualizar(AtualizacaoService.Novidade n)
+    {
+        if (!await Dialogo.Confirmar($"Atualizar para a versão {AtualizacaoService.Texto(n.Versao)}?\nO CrankoHub vai baixar a versão nova, fechar e abrir de novo. Seus dados não são alterados.")) return;
+        _progresso = 0;
+        // Redesenha só quando muda o percentual inteiro (o download avisa a cada 80 KB)
+        var progresso = new Progress<double>(p =>
+        {
+            if ((int)(p * 100) == (int)((_progresso ?? 0) * 100)) return;
+            _progresso = p;
+            StateHasChanged();
+        });
+        try
+        {
+            await Atualizacao.InstalarAsync(n, progresso);
+        }
+        catch (Exception ex)
+        {
+            _progresso = null;
+            Toast.Erro(ex is InvalidOperationException ? ex.Message : $"Não foi possível atualizar: {ex.Message}");
+        }
+    }
+
+    private async Task MudarCor(string valor)
+    {
+        Store.Dados.Config.CorDestaque = valor;
+        Store.Salvar();
+        var cor = CorDestaque.DaConfig(valor);
+        await JS.InvokeVoidAsync("crankohub.aplicarDestaque", cor.Claro, cor.Escuro, cor.Texto);
+        Bandeja.AplicarCor(cor.Claro);
+    }
+
+    private Task MudarCorPersonalizada(ChangeEventArgs e) => MudarCor(e.Value?.ToString()?.ToUpperInvariant() ?? "azul");
+
+    private void Exportar()
+    {
+        var caminho = Dialogo.SalvarBackup($"crankohub-backup-{Iso(Hoje)}.json");
+        if (caminho is null) return;
+        try
+        {
+            File.WriteAllText(caminho, Store.Exportar());
+            Store.Dados.Config.UltimoBackup = Hoje;
+            Store.Salvar();
+            Toast.Ok("Backup salvo.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível salvar o backup: {ex.Message}");
+        }
+    }
+
+    private void Mudar(ChangeEventArgs e, Action<bool> aplicar)
+    {
+        aplicar(e.Value is true);
+        Store.Salvar();
+    }
+
+    private void MudarInicioWindows(ChangeEventArgs e)
+    {
+        var ligado = e.Value is true;
+        try
+        {
+            InicializacaoWindows.Aplicar(ligado);
+            ConfigLocal.Atual.IniciarComWindows = ligado;
+            ConfigLocal.Atual.Salvar();
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível alterar a inicialização: {ex.Message}");
+        }
+    }
+
+    private void AlternarAutomatico(ChangeEventArgs e)
+    {
+        var cfg = Store.Dados.Config;
+        cfg.BackupAutomatico = e.Value is true;
+        if (cfg.BackupAutomatico && string.IsNullOrWhiteSpace(cfg.PastaBackup))
+            cfg.PastaBackup = BackupService.PastaSugerida;
+        Store.Salvar();
+        Backup.ExecutarSeNecessario();
+    }
+
+    private void EscolherPasta()
+    {
+        var cfg = Store.Dados.Config;
+        var pasta = Dialogo.EscolherPasta("Pasta para os backups automáticos", cfg.PastaBackup ?? BackupService.PastaSugerida);
+        if (pasta is null) return;
+        cfg.PastaBackup = pasta;
+        cfg.UltimoBackup = null; // pasta nova: faz o primeiro backup nela
+        Store.Salvar();
+        Backup.ExecutarSeNecessario();
+    }
+
+    private async Task UsarPastaSincronizada()
+    {
+        var pasta = Dialogo.EscolherPasta("Pasta sincronizada para os dados (OneDrive, Google Drive...)", ConfigLocal.Atual.PastaDados);
+        if (pasta is null || Path.GetFullPath(pasta) == Path.GetFullPath(ArmazenamentoService.PastaDados)) return;
+        var temDados = File.Exists(Path.Combine(pasta, "dados.json"));
+        var pergunta = temDados
+            ? "Usar os dados que já estão nessa pasta?\nEla já tem dados do CrankoHub (de outro computador). Eles passam a ser usados aqui, e os dados atuais deste computador ficam guardados como cópia. O app vai reiniciar."
+            : "Levar os dados para essa pasta?\nOs dados e as capas deste computador são copiados para lá, e o app passa a usá-los. Faça o mesmo no outro computador. O app vai reiniciar.";
+        if (!await Dialogo.Confirmar(pergunta)) return;
+        try
+        {
+            Store.UsarPasta(pasta);
+            AtualizacaoService.Reiniciar();
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível usar a pasta: {ex.Message}");
+        }
+    }
+
+    private async Task VoltarParaLocal()
+    {
+        if (!await Dialogo.Confirmar("Voltar a guardar os dados só neste computador?\nOs dados atuais são copiados para a pasta local. A pasta sincronizada não é apagada. O app vai reiniciar.")) return;
+        try
+        {
+            Store.VoltarParaLocal();
+            AtualizacaoService.Reiniciar();
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível voltar para a pasta local: {ex.Message}");
+        }
+    }
+
+    private void AbrirPastaDados()
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ArmazenamentoService.PastaDados) { UseShellExecute = true }); }
+        catch (Exception ex) { Toast.Erro($"Não foi possível abrir a pasta: {ex.Message}"); }
+    }
+
+    private void MudarMantidos(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var n)) return;
+        Store.Dados.Config.BackupsMantidos = n;
+        Store.Salvar();
+    }
+
+    private void FazerAgora()
+    {
+        if (Backup.FazerAgora()) Toast.Ok("Backup feito.");
+    }
+
+    private async Task Restaurar(FileInfo arquivo)
+    {
+        if (!await Dialogo.Confirmar($"Substituir todos os dados atuais pelo backup \"{arquivo.Name}\"?")) return;
+        try
+        {
+            Store.Importar(File.ReadAllText(arquivo.FullName));
+            Toast.Ok("Backup restaurado.");
+        }
+        catch (InvalidDataException ex) { Toast.Erro(ex.Message); }
+        catch (Exception ex) { Toast.Erro($"Não foi possível ler o backup: {ex.Message}"); }
+    }
+
+    private async Task Importar()
+    {
+        var caminho = Dialogo.AbrirBackup();
+        if (caminho is null) return;
+        try
+        {
+            var json = File.ReadAllText(caminho);
+            if (!await Dialogo.Confirmar("Substituir todos os dados atuais pelo backup selecionado?")) return;
+            Store.Importar(json);
+            Toast.Ok("Backup importado com sucesso!");
+        }
+        catch (InvalidDataException ex)
+        {
+            Toast.Erro(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível ler o arquivo: {ex.Message}");
+        }
+    }
+
+    private async Task CarregarExemplo()
+    {
+        var d = Store.Dados;
+        var temDados = d.Dieta.Registros.Count > 0 || d.Carro.Abastecimentos.Count > 0 || d.Carro.Manutencoes.Count > 0 || d.Assinaturas.Count > 0 || d.Entretenimento.Count > 0 || d.Tarefas.Cards.Count > 0;
+        if (temDados && !await Dialogo.Confirmar("Carregar os dados de exemplo?\nIsso vai substituir seus dados atuais.")) return;
+        Store.CarregarExemplo();
+        Toast.Ok("Dados de exemplo carregados. Dê uma olhada em Dieta, Carro, Assinaturas, Entretenimento e Tarefas!");
+    }
+
+    private async Task ApagarTudo()
+    {
+        if (!await Dialogo.Confirmar("Apagar TODOS os dados?\nEssa ação não pode ser desfeita.")) return;
+        Store.Resetar();
+        Toast.Ok("Todos os dados foram apagados.");
+    }
+}

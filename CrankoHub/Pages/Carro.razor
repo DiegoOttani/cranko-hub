@@ -1,0 +1,286 @@
+@page "/carro"
+@using CrankoHub.Pages.CarroAbas
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+
+@{
+    var hoje = Hoje;
+    var c = Store.Dados.Carro;
+    var v = CarroCalculos.VeiculoAtivo(c);
+    var list = CarroCalculos.DoVeiculo(c, v.Id);
+    var manut = ManutencaoCalculos.DoVeiculo(c, v.Id);
+    var st = CarroCalculos.Estatisticas(list);
+    var odoAtual = ManutencaoCalculos.OdometroAtual(list, manut);
+    var kmDia = ManutencaoCalculos.KmPorDia(list, hoje);
+    var lembretes = ManutencaoCalculos.Lembretes(manut, odoAtual, kmDia, hoje);
+    var alertas = lembretes.Count(s => s.Vencida || s.EmBreve);
+    var docsAtencao = DocumentosCalculos.DoVeiculo(c, v.Id).Where(x => DocumentosCalculos.PrecisaAtencao(x, hoje)).ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1>Carro</h1>
+        <p>Abastecimentos, consumo e manutenção de cada veículo.</p>
+    </div>
+    <div class="veh">
+        <select class="select" aria-label="Veículo" value="@v.Id" @onchange="TrocarVeiculo">
+            @foreach (var x in c.Veiculos)
+            {
+                <option value="@x.Id">@x.Nome</option>
+            }
+        </select>
+        <button class="btn sm" type="button" @onclick="AdicionarVeiculo">+ Veículo</button>
+        <button class="btn sm" type="button" @onclick="RenomearVeiculo">Renomear</button>
+        <button class="btn sm danger" type="button" @onclick="ExcluirVeiculo">Excluir</button>
+    </div>
+</div>
+
+<nav class="tabs" role="tablist" aria-label="Seções do carro">
+    @foreach (var (chave, rotulo) in Abas)
+    {
+        <button type="button" role="tab" class="tab @(_aba == chave ? "active" : "")" aria-selected="@(_aba == chave)" @onclick="() => Abrir(chave)">
+            @rotulo
+            @if (chave == "abastecimentos" && list.Count > 0) { <span class="tab-count">@list.Count</span> }
+            @if (chave == "manutencao" && alertas > 0) { <span class="tab-count alerta" title="Manutenções vencidas ou próximas">@alertas</span> }
+            @if (chave == "documentos" && docsAtencao.Count > 0) { <span class="tab-count alerta" title="Documentos vencidos ou vencendo em 30 dias">@docsAtencao.Count</span> }
+        </button>
+    }
+</nav>
+
+@switch (_aba)
+{
+    case "abastecimentos":
+        <AbaAbastecimentos @key="v.Id" Veiculo="v" Alterado="StateHasChanged" />
+        break;
+    case "consumo":
+        <AbaConsumo @key="v.Id" Veiculo="v" />
+        break;
+    case "calculadoras":
+        <AbaCalculadoras @key="v.Id" Veiculo="v" />
+        break;
+    case "documentos":
+        <AbaDocumentos @key="v.Id" Veiculo="v" Alterado="StateHasChanged" />
+        break;
+    case "manutencao":
+        <AbaManutencao @key="@(v.Id + _tipoNovo)" Veiculo="v" TipoInicial="@_tipoNovo" Alterado="StateHasChanged" />
+        break;
+    default:
+        var gastoMes = CarroCalculos.GastoNoMes(list, hoje);
+        var gastoManut = manut.Sum(m => m.Valor ?? 0);
+        var gastoManutAno = manut.Where(m => m.Data.Year == hoje.Year).Sum(m => m.Valor ?? 0);
+        var oleo = lembretes.FirstOrDefault(s => s.Tipo.Chave == "oleo");
+        var outros = lembretes.Where(s => s != oleo && s.TemLembrete).Take(4).ToList();
+        var recentes = list.Select(a => (a.Data, Icone: Icones.Bomba, Texto: $"{Combustivel.NomeDe(a.Combustivel)} · {Num(a.Litros, 1)} L",
+                                         Sub: $"{Num(a.Kml, 2)} km/l · {Money(a.Valor)}"))
+            .Concat(manut.Select(m => (m.Data, Icone: Icones.Ferramenta, Texto: TipoManutencao.NomeDe(m.Tipo),
+                                       Sub: string.Join(" · ", new[] { m.Descricao, m.Valor is not null ? Money(m.Valor) : null }.Where(s => !string.IsNullOrEmpty(s))))))
+            .OrderByDescending(x => x.Data).Take(6).ToList();
+        var gastosMensais = Formatacao.UltimosMeses(12).Select(m =>
+        {
+            var comb = list.Where(a => a.Data.Year == m.Ano && a.Data.Month == m.Mes).Sum(a => a.Valor ?? 0);
+            var serv = manut.Where(x => x.Data.Year == m.Ano && x.Data.Month == m.Mes).Sum(x => x.Valor ?? 0);
+            var rotulo = MesLabel(m.Ano, m.Mes);
+            return new BarraDado(rotulo, comb + serv, $"{rotulo} · combustível {Money(comb)} · manutenção {Money(serv)}");
+        }).ToList();
+
+        <section class="kpis k6">
+            <div class="kpi"><span class="kpi-label">Consumo médio</span>
+                <span class="kpi-value">@Num(st.Media, 2)<small>km/l</small></span>
+                <span class="kpi-sub">@(st.N > 0 ? $"melhor {Num(st.Melhor, 1)} · pior {Num(st.Pior, 1)}" : "Nenhum abastecimento ainda")</span></div>
+            <div class="kpi"><span class="kpi-label">Custo por km</span>
+                <span class="kpi-value">@Money(st.CustoKm)</span>
+                <span class="kpi-sub">@(st.CustoKm > 0 ? Money(st.CustoKm * 100) + " a cada 100 km" : "Informe os valores pagos")</span></div>
+            <div class="kpi"><span class="kpi-label">Combustível</span>
+                <span class="kpi-value">@Money(st.Valor, st.Valor >= 1000 ? 0 : 2)</span>
+                <span class="kpi-sub">@Money(gastoMes) neste mês</span></div>
+            <div class="kpi"><span class="kpi-label">Manutenção</span>
+                <span class="kpi-value">@Money(gastoManut, gastoManut >= 1000 ? 0 : 2)</span>
+                <span class="kpi-sub">@Money(gastoManutAno) em @hoje.Year</span></div>
+            <div class="kpi"><span class="kpi-label">Km rodados</span>
+                <span class="kpi-value">@Num(st.Km, 0)<small>km</small></span>
+                <span class="kpi-sub">@st.N @Plural(st.N, "abastecimento", "abastecimentos")@(st.N > 0 ? " · ~" + Num(st.Km / st.N, 0) + " km cada" : "")</span></div>
+            <div class="kpi"><span class="kpi-label">Odômetro</span>
+                <span class="kpi-value">@Num(odoAtual, 0)<small>km</small></span>
+                <span class="kpi-sub">@(kmDia > 0 ? $"~{Num(kmDia * 30, 0)} km por mês" : "estimado pelos registros")</span></div>
+        </section>
+
+        <div class="grid-2">
+            <section class="card">
+                <div class="card-head">
+                    <div><h2>Manutenção</h2><p>Manutenção e documentos que estão para vencer.</p></div>
+                    <button class="btn sm" type="button" @onclick="@(() => Abrir("manutencao"))">Ver tudo</button>
+                </div>
+                <div class="lembretes uma-coluna">
+                    @if (oleo is not null)
+                    {
+                        <CartaoLembrete Status="oleo" Destaque="true">
+                            <div class="lembrete-acoes"><button class="btn sm primary" type="button" @onclick="@(() => RegistrarServico("oleo"))">Registrar troca de óleo</button></div>
+                        </CartaoLembrete>
+                    }
+                    else
+                    {
+                        <div class="lembrete destaque vazio">
+                            <div class="lembrete-head"><b>Troca de óleo</b><span class="badge">sem registro</span></div>
+                            <span class="muted">Registre a última troca de óleo para saber quando fazer a próxima.</span>
+                            <div class="lembrete-acoes"><button class="btn sm primary" type="button" @onclick="@(() => RegistrarServico("oleo"))">Registrar troca de óleo</button></div>
+                        </div>
+                    }
+                </div>
+                @if (outros.Count > 0 || docsAtencao.Count > 0)
+                {
+                    <ul class="activity">
+                        @foreach (var x in docsAtencao)
+                        {
+                            var (texto, classe) = DocumentosCalculos.Situacao(x, hoje);
+                            <li>
+                                <span class="a-icon">@Icones.Dados</span>
+                                <div class="a-text">@TipoDocumento.NomeDe(x.Tipo)<small>@DataBR(x.Vencimento)@(x.Valor is not null ? $" · {Money(x.Valor)}" : "")@(x.Descricao is not null ? $" · {x.Descricao}" : "")</small></div>
+                                <span class="badge @classe">@texto</span>
+                            </li>
+                        }
+                        @foreach (var s in outros)
+                        {
+                            var (texto, classe) = s.Situacao;
+                            <li>
+                                <span class="a-icon">@Icones.Ferramenta</span>
+                                <div class="a-text">@s.Tipo.Nome<small>@s.Restante</small></div>
+                                <span class="badge @classe">@texto</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div><h2>Últimos registros</h2><p>Abastecimentos e serviços mais recentes.</p></div>
+                    <button class="btn sm" type="button" @onclick="@(() => Abrir("abastecimentos"))">+ Abastecimento</button>
+                </div>
+                @if (recentes.Count > 0)
+                {
+                    <ul class="activity">
+                        @foreach (var r in recentes)
+                        {
+                            <li>
+                                <span class="a-icon">@r.Icone</span>
+                                <div class="a-text">@r.Texto<small>@r.Sub</small></div>
+                                <time>@DataBR(r.Data)</time>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <div class="chart-empty"><span>Nada registrado ainda para @v.Nome.</span></div>
+                }
+            </section>
+        </div>
+
+        <section class="card">
+            <div class="card-head"><div><h2>Gasto mensal com o carro</h2><p>Combustível + manutenção nos últimos 12 meses.</p></div></div>
+            <GraficoBarras Dados="gastosMensais" Nome="Gasto" Altura="230"
+                           FormatoY="@(new FormatoNumero(0, Prefixo: "R$ "))" Formato="FormatoNumero.Real"
+                           MsgVazia="Sem gastos nos últimos 12 meses." />
+        </section>
+        break;
+}
+
+<DialogoTexto @ref="_dialogoNome" />
+
+@code {
+    private static readonly (string Chave, string Rotulo)[] Abas =
+    [
+        ("resumo", "Resumo"),
+        ("abastecimentos", "Abastecimentos"),
+        ("consumo", "Consumo"),
+        ("calculadoras", "Calculadoras"),
+        ("manutencao", "Manutenção"),
+        ("documentos", "Documentos"),
+    ];
+
+    // Aba aberta, mantida enquanto o app estiver aberto
+    private static string _aba = "resumo";
+
+    /// <summary>Permite abrir uma aba direto pelo link (ex.: carro?aba=manutencao).</summary>
+    [SupplyParameterFromQuery(Name = "aba")] public string? AbaInicial { get; set; }
+
+    /// <summary>Permite abrir um veículo direto pelo link (ex.: carro?veiculo=abc123).</summary>
+    [SupplyParameterFromQuery(Name = "veiculo")] public string? VeiculoDoLink { get; set; }
+
+    private string? _abaDoLink, _veiculoDoLink;
+    private string? _tipoNovo; // tipo pré-selecionado ao abrir a manutenção por um atalho
+    private DialogoTexto _dialogoNome = default!;
+
+    private DadosCarro Dados => Store.Dados.Carro;
+
+    protected override void OnParametersSet()
+    {
+        // Só quando o link muda, para não desfazer a aba escolhida a cada nova renderização
+        if (VeiculoDoLink != _veiculoDoLink)
+        {
+            _veiculoDoLink = VeiculoDoLink;
+            if (Dados.Veiculos.Any(v => v.Id == VeiculoDoLink)) AtivarVeiculo(VeiculoDoLink!);
+        }
+        if (AbaInicial == _abaDoLink) return;
+        _abaDoLink = AbaInicial;
+        if (Abas.Any(a => a.Chave == AbaInicial)) _aba = AbaInicial!;
+    }
+
+    private void Abrir(string aba)
+    {
+        _aba = aba;
+        _tipoNovo = null;
+    }
+
+    private void RegistrarServico(string tipo)
+    {
+        _aba = "manutencao";
+        _tipoNovo = tipo;
+    }
+
+    // ---- Veículos ----
+
+    private void AtivarVeiculo(string id)
+    {
+        Dados.Ativo = id;
+        Store.Salvar();
+    }
+
+    private void TrocarVeiculo(ChangeEventArgs e) => AtivarVeiculo(e.Value?.ToString() ?? "");
+
+    private async Task AdicionarVeiculo()
+    {
+        var nome = await _dialogoNome.Perguntar("Novo veículo", "Nome do novo veículo (ex.: Onix 2020, Moto)");
+        if (nome is null) return;
+        var novo = new Veiculo { Id = ArmazenamentoService.NovoId(), Nome = nome[..Math.Min(nome.Length, 40)] };
+        Dados.Veiculos.Add(novo);
+        AtivarVeiculo(novo.Id);
+        Toast.Ok($"Veículo \"{novo.Nome}\" criado.");
+    }
+
+    private async Task RenomearVeiculo()
+    {
+        var v = CarroCalculos.VeiculoAtivo(Dados);
+        var nome = await _dialogoNome.Perguntar("Renomear veículo", "Novo nome do veículo", v.Nome);
+        if (nome is null) return;
+        v.Nome = nome[..Math.Min(nome.Length, 40)];
+        Store.Salvar();
+    }
+
+    private async Task ExcluirVeiculo()
+    {
+        if (Dados.Veiculos.Count == 1) { Toast.Erro("Você precisa ter pelo menos um veículo."); return; }
+        var v = CarroCalculos.VeiculoAtivo(Dados);
+        var qtdAbast = Dados.Abastecimentos.Count(a => a.VeiculoId == v.Id);
+        var qtdManut = Dados.Manutencoes.Count(m => m.VeiculoId == v.Id);
+        var qtdDocs = Dados.Documentos.Count(x => x.VeiculoId == v.Id);
+        if (!await Dialogo.Confirmar($"Excluir \"{v.Nome}\" com seus {qtdAbast} abastecimentos, {qtdManut} manutenções e {qtdDocs} documentos?")) return;
+        Dados.Documentos.RemoveAll(x => x.VeiculoId == v.Id);
+        Dados.Abastecimentos.RemoveAll(a => a.VeiculoId == v.Id);
+        Dados.Manutencoes.RemoveAll(m => m.VeiculoId == v.Id);
+        Dados.Veiculos.Remove(v);
+        AtivarVeiculo(Dados.Veiculos[0].Id);
+        Toast.Ok("Veículo excluído.");
+    }
+}

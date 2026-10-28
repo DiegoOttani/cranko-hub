@@ -1,0 +1,91 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- Só para o ícone na bandeja (NotifyIcon) -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>CrankoHub</RootNamespace>
+
+    <!-- Metadados do aplicativo -->
+    <AssemblyTitle>CrankoHub</AssemblyTitle>
+    <Product>CrankoHub</Product>
+    <Version>1.0.0</Version>
+    <Authors>Diego Ottani</Authors>
+    <Description>Painel pessoal de parâmetros: dieta, carro e mais.</Description>
+    <ApplicationIcon>Assets\icone.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- Publicação: um único .exe autossuficiente para Windows x64 (aplicado apenas no dotnet publish) -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <!-- Evita conflito de nomes com o WPF (Application, MessageBox...) -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <!-- A pasta Linux é outro projeto (versão Photino), que reaproveita estes arquivos -->
+  <ItemGroup>
+    <Compile Remove="Linux\**" />
+    <Content Remove="Linux\**" />
+    <None Remove="Linux\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.120" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\icone.ico" />
+  </ItemGroup>
+
+  <!--
+    Publicação em arquivo único: o SDK copia os arquivos de wwwroot (static web assets) soltos
+    ao lado do .exe. Aqui eles são movidos para dentro do pacote; com IncludeAllContentForSelfExtract
+    são extraídos automaticamente na primeira execução.
+  -->
+  <Target Name="IncluirWwwrootNoExe" BeforeTargets="_ComputeFilesToBundle;_ComputeResolvedFilesToPublishTypes"
+          DependsOnTargets="StaticWebAssetsPrepareForPublish" Condition="'$(PublishSingleFile)' == 'true'">
+    <ComputeStaticWebAssetsForCurrentProject Assets="@(StaticWebAsset)" ProjectMode="$(StaticWebAssetProjectMode)"
+                                             AssetKind="Publish" Source="$(PackageId)">
+      <Output TaskParameter="StaticWebAssets" ItemName="_WwwrootParaExe" />
+    </ComputeStaticWebAssetsForCurrentProject>
+    <ComputeStaticWebAssetsTargetPaths Assets="@(_WwwrootParaExe)" PathPrefix="wwwroot">
+      <Output TaskParameter="AssetsWithTargetPath" ItemName="_WwwrootParaExeComCaminho" />
+    </ComputeStaticWebAssetsTargetPaths>
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(_WwwrootParaExeComCaminho)"
+                             RelativePath="%(_WwwrootParaExeComCaminho.TargetPath)"
+                             CopyToPublishDirectory="PreserveNewest"
+                             ExcludeFromSingleFile="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Impede que o SDK copie, depois, os mesmos arquivos soltos para a pasta de publicação -->
+  <Target Name="NaoCopiarWwwrootSolto" AfterTargets="_SplitPublishStaticWebAssetsByCopyOptions" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <_PublishStaticWebAssetsPreserveNewest Remove="@(_PublishStaticWebAssetsPreserveNewest)" />
+      <_PublishStaticWebAssetsCopyAlways Remove="@(_PublishStaticWebAssetsCopyAlways)" />
+      <_PublishStaticWebAssetsIfDifferent Remove="@(_PublishStaticWebAssetsIfDifferent)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- O manifesto de endpoints só é usado pelo ASP.NET Core, não pelo BlazorWebView -->
+  <Target Name="RemoverManifestoEndpoints" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <Delete Files="$(PublishDir)$(TargetName).staticwebassets.endpoints.json" />
+  </Target>
+
+</Project>

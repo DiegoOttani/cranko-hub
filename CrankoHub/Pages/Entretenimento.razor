@@ -1,0 +1,446 @@
+@page "/entretenimento"
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+@inject EntretenimentoBusca Busca
+@inject CapasService Capas
+
+@{
+    var hoje = Hoje;
+    var todos = Lista;
+    var concluidos = todos.Where(e => e.Status == "concluido").ToList();
+    var noAno = concluidos.Count(e => e.Data?.Year == hoje.Year);
+    var notas = todos.Where(e => e.Nota is not null).Select(e => e.Nota!.Value).ToList();
+    var andamento = todos.Count(e => e.Status == "andamento");
+    var quero = todos.Count(e => e.Status == "quero");
+
+    var termo = _filtroTexto.Trim();
+    var estante = todos
+        .Where(e => _filtroCategoria == "todas" || e.Categoria == _filtroCategoria)
+        .Where(e => _filtroStatus == "todos" || e.Status == _filtroStatus)
+        .Where(e => termo.Length == 0 || e.Titulo.Contains(termo, StringComparison.CurrentCultureIgnoreCase)
+                    || (e.Criadores?.Contains(termo, StringComparison.CurrentCultureIgnoreCase) ?? false));
+    estante = _ordem switch
+    {
+        "nota" => estante.OrderByDescending(e => e.Nota ?? -1).ThenBy(e => e.Titulo),
+        "titulo" => estante.OrderBy(e => e.Titulo),
+        "ano" => estante.OrderByDescending(e => e.Ano ?? 0).ThenBy(e => e.Titulo),
+        _ => estante.OrderByDescending(e => e.Data ?? DateOnly.MinValue).ThenBy(e => e.Titulo),
+    };
+    var lista = estante.ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1>Entretenimento</h1>
+        <p>Sua estante de filmes, séries, animes, jogos e livros — o que você viu, quando e que nota deu.</p>
+    </div>
+    <button class="btn primary" type="button" @onclick="AbrirBusca">+ Adicionar</button>
+</div>
+
+<section class="kpis">
+    <div class="kpi"><span class="kpi-label">Na estante</span>
+        <span class="kpi-value">@todos.Count</span>
+        <span class="kpi-sub">@concluidos.Count @Plural(concluidos.Count, "concluído", "concluídos")</span></div>
+    <div class="kpi"><span class="kpi-label">Em @hoje.Year</span>
+        <span class="kpi-value">@noAno</span>
+        <span class="kpi-sub">@Plural(noAno, "concluído este ano", "concluídos este ano")</span></div>
+    <div class="kpi"><span class="kpi-label">Nota média</span>
+        <span class="kpi-value">@(notas.Count > 0 ? Num(notas.Average(), 1) + " ★" : Vazio)</span>
+        <span class="kpi-sub">@notas.Count @Plural(notas.Count, "avaliado", "avaliados")</span></div>
+    <div class="kpi"><span class="kpi-label">Em andamento</span>
+        <span class="kpi-value">@andamento</span>
+        <span class="kpi-sub">@quero na lista de desejos</span></div>
+</section>
+
+<section class="card">
+    <div class="estante-filtros">
+        <div class="chips">
+            <button type="button" class="chip @(_filtroCategoria == "todas" ? "active" : "")" @onclick='() => _filtroCategoria = "todas"'>Tudo</button>
+            @foreach (var c in CategoriaEntretenimento.Todas)
+            {
+                var n = todos.Count(e => e.Categoria == c.Chave);
+                <button type="button" class="chip @(_filtroCategoria == c.Chave ? "active" : "")" @onclick="() => _filtroCategoria = c.Chave">@c.Nome@(n > 0 ? $" · {n}" : "")</button>
+            }
+        </div>
+        <div class="estante-busca">
+            <input class="select" type="search" placeholder="Buscar título ou autor..." @bind="_filtroTexto" @bind:event="oninput">
+            <select class="select" @bind="_filtroStatus">
+                <option value="todos">Todos os status</option>
+                @foreach (var s in StatusEntretenimento.Todos)
+                {
+                    <option value="@s.Chave">@s.Nome</option>
+                }
+            </select>
+            <select class="select" @bind="_ordem">
+                <option value="recentes">Mais recentes</option>
+                <option value="nota">Maior nota</option>
+                <option value="ano">Lançamento</option>
+                <option value="titulo">Título (A–Z)</option>
+            </select>
+        </div>
+    </div>
+
+    @if (lista.Count == 0)
+    {
+        <div class="chart-empty">@(todos.Count == 0 ? "Sua estante está vazia. Clique em \"+ Adicionar\" para colocar o primeiro item." : "Nada encontrado com esses filtros.")</div>
+    }
+    else
+    {
+        <div class="estante">
+            @foreach (var e in lista)
+            {
+                <button type="button" class="capa-item" @key="e.Id" @onclick="() => AbrirDetalhe(e)">
+                    <Capa Item="e" />
+                    <span class="capa-titulo">@e.Titulo</span>
+                    <span class="capa-sub">
+                        @if (e.Status == "concluido" && e.Nota is not null)
+                        {
+                            <Estrelas Valor="e.Nota" />
+                        }
+                        else if (e.Status != "concluido")
+                        {
+                            <span class="badge @(e.Status == "andamento" ? "good" : "")">@StatusEntretenimento.Buscar(e.Status).Nome</span>
+                        }
+                        else
+                        {
+                            @(e.Ano?.ToString() ?? CategoriaEntretenimento.Buscar(e.Categoria).Singular)
+                        }
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</section>
+
+@* ---- Adicionar: busca nas APIs ---- *@
+@if (_modo == Modo.Buscar)
+{
+    var cat = CategoriaEntretenimento.Buscar(_fCategoria);
+    <div class="modal-backdrop" @onclick="Fechar">
+        <div class="card modal modal-largo" @onclick:stopPropagation="true">
+            <div class="card-head"><div><h2>Adicionar à estante</h2><p>Busque pelo título para preencher tudo e baixar a capa.</p></div></div>
+            <div class="chips">
+                @foreach (var c in CategoriaEntretenimento.Todas)
+                {
+                    <button type="button" class="chip @(_fCategoria == c.Chave ? "active" : "")" @onclick="() => MudarCategoriaBusca(c.Chave)">@c.Nome</button>
+                }
+            </div>
+            <form class="busca-linha" autocomplete="off" @onsubmit="Pesquisar">
+                <input class="select" placeholder="Título do @cat.Singular..." @bind="_termo" @bind:event="oninput">
+                <button class="btn primary" type="submit" disabled="@_buscando">@(_buscando ? "Buscando..." : "Buscar")</button>
+            </form>
+            @if (_erroBusca is not null)
+            {
+                <div class="preview">@_erroBusca</div>
+            }
+            @if (_resultados.Count > 0)
+            {
+                <div class="resultados">
+                    @foreach (var r in _resultados)
+                    {
+                        <button type="button" class="resultado" disabled="@_buscando" @onclick="() => Escolher(r)">
+                            @if (r.UrlCapa is not null)
+                            {
+                                <img src="@r.UrlCapa" alt="" loading="lazy">
+                            }
+                            else
+                            {
+                                <span class="capa-vazia mini">@Inicial(r.Titulo)</span>
+                            }
+                            <span><b>@r.Titulo</b><small>@(string.Join(" · ", new[] { r.Ano?.ToString(), r.Criadores }.Where(x => x is not null)))</small></span>
+                        </button>
+                    }
+                </div>
+            }
+            else if (_buscou && _erroBusca is null)
+            {
+                <p class="muted">Nada encontrado. Tente outro título ou cadastre manualmente.</p>
+            }
+            <div class="form-actions">
+                <button class="btn" type="button" @onclick="Fechar">Cancelar</button>
+                <button class="btn" type="button" @onclick="() => AbrirFormulario(null, null)">Cadastrar manualmente</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ---- Formulário (novo ou edição) ---- *@
+@if (_modo == Modo.Form)
+{
+    var cat = CategoriaEntretenimento.Buscar(_fCategoria);
+    <div class="modal-backdrop" @onclick="Fechar">
+        <form class="card modal modal-largo" autocomplete="off" @onclick:stopPropagation="true" @onsubmit="Salvar">
+            <h2>@(_editId is not null ? "Editar" : "Novo") @cat.Singular</h2>
+            <div class="detalhe">
+                <div class="detalhe-capa">
+                    <Capa Arquivo="@_fCapa" UrlExterna="@_fUrlCapa" Titulo="@_fTitulo" />
+                    <button class="btn sm" type="button" @onclick="EscolherImagem">Escolher imagem…</button>
+                    @if (_fCapa is not null || _fUrlCapa is not null)
+                    {
+                        <button class="btn sm" type="button" @onclick="RemoverImagem">Remover imagem</button>
+                    }
+                </div>
+                <div class="form-grid">
+                    <label class="field full"><span>Título *</span><input maxlength="120" required @bind="_fTitulo"></label>
+                    <label class="field"><span>Categoria</span>
+                        <select @bind="_fCategoria">
+                            @foreach (var c in CategoriaEntretenimento.Todas)
+                            {
+                                <option value="@c.Chave">@c.Nome</option>
+                            }
+                        </select></label>
+                    <label class="field"><span>Ano de lançamento</span><input inputmode="numeric" maxlength="4" @bind="_fAno"></label>
+                    <label class="field"><span>Status</span>
+                        <select @bind="_fStatus">
+                            @foreach (var s in StatusEntretenimento.Todos)
+                            {
+                                <option value="@s.Chave">@s.Nome</option>
+                            }
+                        </select></label>
+                    @if (_fStatus != "quero")
+                    {
+                        <label class="field"><span>@(_fStatus == "concluido" ? cat.Verbo + " em" : "Começou em")</span><input type="date" @bind="_fData"></label>
+                    }
+                    @if (_fStatus == "concluido")
+                    {
+                        <div class="field full"><span>Sua nota</span><Estrelas Editavel="true" @bind-Valor="_fNota" /></div>
+                    }
+                    <label class="field"><span>Criadores</span><input maxlength="120" placeholder="diretor, autor, estúdio..." @bind="_fCriadores"></label>
+                    <label class="field"><span>Gêneros</span><input maxlength="120" @bind="_fGeneros"></label>
+                    <label class="field full"><span>Sinopse</span><textarea rows="4" maxlength="2000" @bind="_fSinopse"></textarea></label>
+                    <label class="field full"><span>Observação</span><input maxlength="200" placeholder="onde assistiu, com quem, plataforma..." @bind="_fObs"></label>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn" type="button" @onclick="Fechar">Cancelar</button>
+                <button class="btn primary" type="submit" disabled="@_salvando">@(_salvando ? "Salvando..." : _editId is not null ? "Salvar alterações" : "Adicionar à estante")</button>
+            </div>
+        </form>
+    </div>
+}
+
+@* ---- Detalhes ---- *@
+@if (_modo == Modo.Detalhe && Lista.FirstOrDefault(e => e.Id == _detalheId) is { } d)
+{
+    var cat = CategoriaEntretenimento.Buscar(d.Categoria);
+    <div class="modal-backdrop" @onclick="Fechar">
+        <div class="card modal modal-largo" @onclick:stopPropagation="true">
+            <div class="detalhe">
+                <div class="detalhe-capa"><Capa Item="d" /></div>
+                <div class="detalhe-info">
+                    <span class="muted">@cat.Singular@(d.Ano is int ano ? $" · {ano}" : "")</span>
+                    <h2>@d.Titulo</h2>
+                    @if (d.Criadores is not null)
+                    {
+                        <p class="muted">@d.Criadores</p>
+                    }
+                    <div class="detalhe-nota">
+                        @if (d.Status == "concluido")
+                        {
+                            <Estrelas Editavel="true" Valor="d.Nota" ValorChanged="n => MudarNota(d, n)" />
+                            <span class="muted">@(d.Data is DateOnly dt ? $"{cat.Verbo} em {DataBR(dt)}" : cat.Verbo)</span>
+                        }
+                        else
+                        {
+                            <span class="badge @(d.Status == "andamento" ? "good" : "")">@StatusEntretenimento.Buscar(d.Status).Nome</span>
+                            @if (d.Data is DateOnly dt)
+                            {
+                                <span class="muted">desde @DataBR(dt)</span>
+                            }
+                        }
+                    </div>
+                    @if (d.Generos is not null)
+                    {
+                        <p><small class="muted">@d.Generos</small></p>
+                    }
+                    @if (d.Sinopse is not null)
+                    {
+                        <p class="sinopse">@d.Sinopse</p>
+                    }
+                    @if (d.Obs is not null)
+                    {
+                        <p class="preview">@d.Obs</p>
+                    }
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn" type="button" @onclick="() => Excluir(d)">Excluir</button>
+                <button class="btn" type="button" @onclick="() => AbrirFormulario(d, null)">Editar</button>
+                <button class="btn primary" type="button" @onclick="Fechar">Fechar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private enum Modo { Nenhum, Buscar, Form, Detalhe }
+
+    // Filtros mantidos enquanto o app estiver aberto
+    private static string _filtroCategoria = "todas", _filtroStatus = "todos", _ordem = "recentes";
+    private string _filtroTexto = "";
+
+    private Modo _modo;
+    private string? _detalheId, _editId;
+
+    private string _termo = "";
+    private List<ResultadoBusca> _resultados = [];
+    private string? _erroBusca;
+    private bool _buscando, _buscou, _salvando;
+
+    private string _fCategoria = "filme", _fTitulo = "", _fAno = "", _fStatus = "concluido", _fCriadores = "", _fGeneros = "", _fSinopse = "", _fObs = "";
+    private DateOnly? _fData;
+    private double? _fNota;
+    private string? _fCapa, _fUrlCapa, _fFonte, _fFonteId;
+    // Capas importadas neste formulário que ainda não foram salvas (apagadas se cancelar)
+    private readonly List<string> _capasNovas = [];
+
+    private List<ItemEntretenimento> Lista => Store.Dados.Entretenimento;
+
+    private static string Inicial(string titulo) => titulo.Length > 0 ? titulo[..1].ToUpperInvariant() : "?";
+
+    private void AbrirBusca()
+    {
+        _fCategoria = _filtroCategoria == "todas" ? "filme" : _filtroCategoria;
+        _termo = "";
+        _resultados = [];
+        _erroBusca = null;
+        _buscou = false;
+        _modo = Modo.Buscar;
+    }
+
+    private void AbrirDetalhe(ItemEntretenimento e)
+    {
+        _detalheId = e.Id;
+        _modo = Modo.Detalhe;
+    }
+
+    private void Fechar()
+    {
+        foreach (var c in _capasNovas) CapasService.Excluir(c);
+        _capasNovas.Clear();
+        _modo = Modo.Nenhum;
+    }
+
+    private async Task MudarCategoriaBusca(string chave)
+    {
+        _fCategoria = chave;
+        _resultados = [];
+        _erroBusca = null;
+        _buscou = false;
+        if (_termo.Trim().Length > 0) await Pesquisar();
+    }
+
+    private async Task Pesquisar()
+    {
+        if (_termo.Trim().Length == 0 || _buscando) return;
+        _buscando = true;
+        _erroBusca = null;
+        try { _resultados = await Busca.Buscar(CategoriaEntretenimento.Buscar(_fCategoria), _termo); }
+        catch (BuscaException e) { _resultados = []; _erroBusca = e.Message; }
+        _buscando = false;
+        _buscou = true;
+    }
+
+    private async Task Escolher(ResultadoBusca r)
+    {
+        var existente = Lista.FirstOrDefault(e => e.Fonte == r.Fonte && e.FonteId == r.FonteId && r.FonteId.Length > 0);
+        if (existente is not null && !await Dialogo.Confirmar($"\"{existente.Titulo}\" já está na sua estante.\nAdicionar de novo (ex.: assistiu outra vez)?")) return;
+        _buscando = true;
+        StateHasChanged();
+        r = await Busca.Detalhar(r);
+        _buscando = false;
+        AbrirFormulario(null, r);
+    }
+
+    private void AbrirFormulario(ItemEntretenimento? e, ResultadoBusca? r)
+    {
+        _capasNovas.Clear();
+        _editId = e?.Id;
+        _fCategoria = e?.Categoria ?? _fCategoria;
+        _fTitulo = e?.Titulo ?? r?.Titulo ?? _termo.Trim();
+        _fAno = (e?.Ano ?? r?.Ano)?.ToString() ?? "";
+        _fStatus = e?.Status ?? "concluido";
+        _fData = e is not null ? e.Data : Hoje;
+        _fNota = e?.Nota;
+        _fCriadores = e?.Criadores ?? r?.Criadores ?? "";
+        _fGeneros = e?.Generos ?? r?.Generos ?? "";
+        _fSinopse = e?.Sinopse ?? r?.Sinopse ?? "";
+        _fObs = e?.Obs ?? "";
+        _fCapa = e?.Capa;
+        _fUrlCapa = r?.UrlCapa;
+        _fFonte = e?.Fonte ?? r?.Fonte;
+        _fFonteId = e?.FonteId ?? r?.FonteId;
+        _modo = Modo.Form;
+    }
+
+    private void EscolherImagem()
+    {
+        if (Dialogo.AbrirImagem() is not string caminho) return;
+        if (CapasService.Importar(caminho) is not string arquivo) { Toast.Erro("Não foi possível usar essa imagem."); return; }
+        _capasNovas.Add(arquivo);
+        _fCapa = arquivo;
+        _fUrlCapa = null;
+    }
+
+    private void RemoverImagem() => (_fCapa, _fUrlCapa) = (null, null);
+
+    private async Task Salvar()
+    {
+        var titulo = _fTitulo.Trim();
+        if (titulo.Length == 0) { Toast.Erro("Informe o título."); return; }
+        int? ano = int.TryParse(_fAno.Trim(), out var a) && a is > 1000 and < 3000 ? a : null;
+        if (_fAno.Trim().Length > 0 && ano is null) { Toast.Erro("Informe um ano válido (ex.: 2024)."); return; }
+
+        _salvando = true;
+        var capa = _fCapa;
+        if (_fUrlCapa is not null)
+        {
+            capa = await Capas.Baixar(_fUrlCapa);
+            if (capa is null) Toast.Erro("Não foi possível baixar a capa; o item foi salvo sem ela.");
+        }
+        _salvando = false;
+
+        var ed = _editId is null ? null : Lista.FirstOrDefault(e => e.Id == _editId);
+        var item = ed ?? new ItemEntretenimento { Id = ArmazenamentoService.NovoId() };
+        if (ed is not null && ed.Capa != capa) CapasService.Excluir(ed.Capa);
+        _capasNovas.Remove(capa ?? "");
+
+        static string? Opcional(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        item.Categoria = _fCategoria;
+        item.Titulo = titulo;
+        item.Ano = ano;
+        item.Status = _fStatus;
+        item.Data = _fStatus == "quero" ? null : _fData;
+        item.Nota = _fStatus == "concluido" ? _fNota : null;
+        item.Criadores = Opcional(_fCriadores);
+        item.Generos = Opcional(_fGeneros);
+        item.Sinopse = Opcional(_fSinopse);
+        item.Obs = Opcional(_fObs);
+        item.Capa = capa;
+        item.Fonte = _fFonte;
+        item.FonteId = _fFonteId;
+
+        if (ed is null) Lista.Add(item);
+        Store.Salvar();
+        Toast.Ok(ed is null ? $"\"{titulo}\" adicionado à estante." : "Item atualizado.");
+        Fechar();
+        AbrirDetalhe(item);
+    }
+
+    private void MudarNota(ItemEntretenimento e, double? nota)
+    {
+        e.Nota = nota;
+        Store.Salvar();
+    }
+
+    private async Task Excluir(ItemEntretenimento e)
+    {
+        if (!await Dialogo.Confirmar($"Excluir \"{e.Titulo}\" da estante?")) return;
+        Lista.Remove(e);
+        CapasService.Excluir(e.Capa);
+        Store.Salvar();
+        Fechar();
+        Toast.Ok("Item excluído.");
+    }
+}

@@ -1,0 +1,119 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ArmazenamentoService Store
+@inject BackupService Backup
+@inject NavegacaoService Navegacao
+@inject JanelaService Janela
+@inject ToastService Toast
+
+<div class="app @(_menuAberto ? "menu-open" : "")">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="logo">@Icones.Logo</span>
+            <span class="brand-name">CrankoHub</span>
+        </div>
+        <nav class="nav">
+            <NavLink href="" Match="NavLinkMatch.All">@Icones.Inicio<span>Início</span></NavLink>
+            @foreach (var m in Modulo.Visiveis(Store.Dados.Config))
+            {
+                <NavLink @key="m.Id" href="@m.Link">@m.Icone<span>@m.Nome</span></NavLink>
+            }
+            <div class="nav-sep"></div>
+            <NavLink href="configuracoes">@Icones.Engrenagem<span>Configurações</span></NavLink>
+        </nav>
+        <div class="sidebar-foot">Seus dados ficam salvos neste computador.<br>Faça backups em <b>Configurações</b>.</div>
+    </aside>
+    <div class="backdrop" @onclick="() => _menuAberto = false"></div>
+
+    <div class="main">
+        <header class="topbar">
+            <button class="icon-btn menu-btn" aria-label="Abrir menu" @onclick="() => _menuAberto = !_menuAberto">@Icones.Menu</button>
+            <div class="crumb"><span class="crumb-root">CrankoHub</span><span class="crumb-sep">/</span><span>@TituloDaPagina</span></div>
+            <button class="icon-btn" aria-label="Alternar tema claro/escuro" title="Alternar tema" @onclick="AlternarTema">@Icones.Lua@Icones.Sol</button>
+        </header>
+        @* A chave recria o container a cada navegação, reiniciando a animação de entrada *@
+        <main class="content enter" @key="(_caminho, _recarregados)">
+            @Body
+        </main>
+    </div>
+</div>
+
+<Toasts />
+<Confirmacao />
+
+@code {
+    private bool _menuAberto;
+    private string _caminho = "";
+
+    private string TituloDaPagina => _caminho switch
+    {
+        "dieta" => "Dieta",
+        "carro" => "Carro",
+        "assinaturas" => "Assinaturas",
+        "entretenimento" => "Entretenimento",
+        "tarefas" => "Tarefas",
+        "configuracoes" or "dados" => "Configurações",
+        _ => "Início",
+    };
+
+    protected override void OnInitialized()
+    {
+        _caminho = CaminhoAtual();
+        Nav.LocationChanged += AoNavegar;
+        Navegacao.AoNavegar += AbrirPagina;
+        Store.ModulosMudaram += AtualizarMenu;
+        Store.MudouPorFora += RecarregarDados;
+    }
+
+    private void AtualizarMenu() => _ = InvokeAsync(StateHasChanged);
+
+    // O outro computador sincronizou: relê os dados e recria a página aberta (descarta edições em andamento)
+    private int _recarregados;
+
+    private void RecarregarDados() => _ = InvokeAsync(() =>
+    {
+        if (!Store.Recarregar()) return;
+        _recarregados++;
+        StateHasChanged();
+        Toast.Ok("Dados atualizados de outro computador.");
+    });
+
+    // Pedido vindo de fora do Blazor (ex.: clique numa notificação)
+    private void AbrirPagina(string link) => _ = InvokeAsync(() => Nav.NavigateTo(link));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await JS.InvokeVoidAsync("crankohub.aplicarTema", Store.Dados.Tema);
+        var cor = CorDestaque.DaConfig(Store.Dados.Config.CorDestaque);
+        await JS.InvokeVoidAsync("crankohub.aplicarDestaque", cor.Claro, cor.Escuro, cor.Texto);
+        Backup.ExecutarSeNecessario();
+    }
+
+    private string CaminhoAtual() => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
+
+    private void AoNavegar(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
+    {
+        _caminho = CaminhoAtual();
+        _menuAberto = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("crankohub.rolarParaTopo");
+    });
+
+    private async Task AlternarTema()
+    {
+        Store.Dados.Tema = await JS.InvokeAsync<string>("crankohub.alternarTema");
+        Janela.TemaMudou(Store.Dados.Tema);
+        Store.Salvar();
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= AoNavegar;
+        Navegacao.AoNavegar -= AbrirPagina;
+        Store.ModulosMudaram -= AtualizarMenu;
+        Store.MudouPorFora -= RecarregarDados;
+    }
+}

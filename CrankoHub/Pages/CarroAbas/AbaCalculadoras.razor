@@ -1,0 +1,97 @@
+@* Aba "Calculadoras" do Carro: etanol × gasolina e custo de viagem, usando os dados do veículo quando houver *@
+@inject ArmazenamentoService Store
+
+@{
+    var list = CarroCalculos.DoVeiculo(Store.Dados.Carro, Veiculo.Id);
+    var st = CarroCalculos.Estatisticas(list);
+    var sE = CarroCalculos.Estatisticas(list.Where(a => a.Combustivel == "etanol").ToList());
+    var sG = CarroCalculos.Estatisticas(list.Where(a => a.Combustivel == "gasolina").ToList());
+}
+
+<div class="grid-2">
+    <section class="card">
+        <div class="card-head"><div><h2>Etanol × Gasolina</h2><p>Qual compensa mais com os preços de hoje.</p></div></div>
+        @{
+            var pe = Pf(_cEtanol);
+            var pg = Pf(_cGasolina);
+        }
+        <div class="form-grid">
+            <label class="field"><span>Preço do etanol (R$/L)</span><input inputmode="decimal" placeholder="ex.: 4,19" @bind="_cEtanol" @bind:event="oninput"></label>
+            <label class="field"><span>Preço da gasolina (R$/L)</span><input inputmode="decimal" placeholder="ex.: 6,09" @bind="_cGasolina" @bind:event="oninput"></label>
+        </div>
+        <div class="calc-result">
+            @if (pe > 0 && pg > 0)
+            {
+                double? proprio = sE.Media > 0 && sG.Media > 0 ? sE.Media / sG.Media : null;
+                var limite = proprio ?? 0.7;
+                var razao = pe.Value / pg.Value;
+                var melhor = Combustivel.Buscar(razao <= limite ? "etanol" : "gasolina")!;
+                <span class="calc-big"><span class="dot" style="background:@melhor.Cor"></span>Abasteça com @melhor.Nome</span>
+                <span>O etanol custa <b>@Num(razao * 100, 1)%</b> do preço da gasolina. Compensa até <b>@Num(limite * 100, 1)%</b>
+                    @(proprio is not null ? "(calculado com o consumo real do seu carro)." : "(regra geral dos 70%).")</span>
+                @if (proprio is not null)
+                {
+                    <span>Custo por km: etanol <b>@Money(pe / sE.Media)</b> · gasolina <b>@Money(pg / sG.Media)</b></span>
+                }
+                else
+                {
+                    <span class="muted">Registre abastecimentos com os dois combustíveis para um cálculo personalizado do seu carro.</span>
+                }
+            }
+            else
+            {
+                <span>Informe os dois preços para comparar.</span>
+            }
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head"><div><h2>Custo de viagem</h2><p>Quanto vai gastar de combustível num trajeto.</p></div></div>
+        @{
+            var dist = Pf(_cDistancia);
+            var cons = Pf(_cConsumo);
+            var preco = Pf(_cPreco);
+        }
+        <div class="form-grid">
+            <label class="field"><span>Distância (km)</span><input inputmode="decimal" placeholder="ex.: 350" @bind="_cDistancia" @bind:event="oninput"></label>
+            <label class="field"><span>Consumo (km/l)</span><input inputmode="decimal" placeholder="ex.: 11,5" @bind="_cConsumo" @bind:event="oninput"></label>
+            <label class="field"><span>Preço do litro (R$)</span><input inputmode="decimal" placeholder="ex.: 6,09" @bind="_cPreco" @bind:event="oninput"></label>
+            <label class="check"><input type="checkbox" @bind="_cIdaVolta"> Ida e volta</label>
+        </div>
+        <div class="calc-result">
+            @if (dist > 0 && cons > 0)
+            {
+                var total = dist.Value * (_cIdaVolta ? 2 : 1);
+                var litros = total / cons.Value;
+                <span class="calc-big">@(preco > 0 ? Money(litros * preco) : Num(litros, 1) + " litros")</span>
+                <span><b>@Num(total, 0) km</b> no total · <b>@Num(litros, 1) L</b> de combustível@(preco > 0 ? $" a {Money(preco)}/L" : "")</span>
+                @if (st.Media > 0 && st.CustoKm > 0)
+                {
+                    <span class="muted">Pelo seu histórico (@Money(st.CustoKm)/km): @Money(total * st.CustoKm)</span>
+                }
+            }
+            else
+            {
+                <span>Informe a distância e o consumo.</span>
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Veiculo Veiculo { get; set; } = default!;
+
+    private string _cEtanol = "", _cGasolina = "", _cDistancia = "", _cConsumo = "", _cPreco = "";
+    private bool _cIdaVolta;
+
+    // Sugere valores a partir do histórico do veículo
+    protected override void OnInitialized()
+    {
+        var list = CarroCalculos.DoVeiculo(Store.Dados.Carro, Veiculo.Id);
+        var last = list.LastOrDefault();
+        _cEtanol = InVal(CarroCalculos.UltimoPreco(list, "etanol"), 2);
+        _cGasolina = InVal(CarroCalculos.UltimoPreco(list, "gasolina"), 2);
+        _cConsumo = InVal(CarroCalculos.Estatisticas(list).Media, 1);
+        _cPreco = InVal(last is null ? null : CarroCalculos.UltimoPreco(list, last.Combustivel), 2);
+    }
+}

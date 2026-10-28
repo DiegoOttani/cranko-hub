@@ -1,0 +1,512 @@
+@page "/tarefas"
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+
+@{
+    var t = Dados;
+    var hoje = Hoje;
+    var emHoje = t.Ativo == Quadro.Hoje;
+    var quadro = emHoje ? null : t.Quadros.FirstOrDefault(q => q.Id == t.Ativo);
+    var resumo = TarefasCalculos.ResumoDoDia(t, hoje);
+    var etiquetas = t.Cards.Where(c => emHoje || c.QuadroId == t.Ativo).SelectMany(c => c.Etiquetas).Distinct().Order().ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1>Tarefas</h1>
+        <p>Seus quadros de trabalho, faculdade, casa e projetos — arraste os cards entre as colunas.</p>
+    </div>
+    @if (quadro is not null)
+    {
+        <button class="btn primary" type="button" @onclick="() => AbrirNovo(quadro, quadro.Colunas[0])">+ Nova tarefa</button>
+    }
+</div>
+
+<section class="kpis">
+    <div class="kpi"><span class="kpi-label">Concluídas hoje</span>
+        <span class="kpi-value">@resumo.ConcluidosHoje.Count</span>
+        <span class="kpi-sub">em todos os quadros</span></div>
+    <div class="kpi"><span class="kpi-label">Para hoje</span>
+        <span class="kpi-value">@resumo.ParaHoje.Count</span>
+        <span class="kpi-sub">prazo hoje ou em foco</span></div>
+    <div class="kpi"><span class="kpi-label">Atrasadas</span>
+        <span class="kpi-value">@resumo.Atrasados.Count</span>
+        <span class="kpi-sub">@(resumo.Atrasados.Count == 0 ? "nada atrasado ✓" : "prazo já passou")</span></div>
+    <div class="kpi"><span class="kpi-label">Em aberto</span>
+        <span class="kpi-value">@t.Cards.Count(TarefasCalculos.Aberto)</span>
+        <span class="kpi-sub">@t.Quadros.Count @Plural(t.Quadros.Count, "quadro", "quadros")</span></div>
+</section>
+
+<section class="card">
+    <div class="quadros-barra">
+        <div class="tabs">
+            <button type="button" class="tab @(emHoje ? "active" : "")" @onclick="() => Abrir(Quadro.Hoje)">☀️ Hoje
+                @if (resumo.ParaHoje.Count + resumo.Atrasados.Count > 0)
+                {
+                    <span class="tab-count @(resumo.Atrasados.Count > 0 ? "alerta" : "")">@(resumo.ParaHoje.Count + resumo.Atrasados.Count)</span>
+                }
+            </button>
+            @foreach (var q in t.Quadros)
+            {
+                var abertos = t.Cards.Count(c => c.QuadroId == q.Id && TarefasCalculos.Aberto(c));
+                <button type="button" class="tab @(q.Id == t.Ativo ? "active" : "")" @key="q.Id" @onclick="() => Abrir(q.Id)">
+                    @TarefasCalculos.NomeQuadro(q)
+                    @if (abertos > 0)
+                    {
+                        <span class="tab-count">@abertos</span>
+                    }
+                </button>
+            }
+            <button type="button" class="tab" title="Novo quadro" @onclick="NovoQuadro">+ Quadro</button>
+        </div>
+        @if (quadro is not null)
+        {
+            <div class="quadro-acoes">
+                <button class="btn sm" type="button" @onclick="() => RenomearQuadro(quadro)">@Icones.Editar Renomear</button>
+                <button class="btn sm" type="button" @onclick="() => NovaColuna(quadro)">+ Coluna</button>
+                <button class="btn sm" type="button" disabled="@(t.Quadros.IndexOf(quadro) == 0)" title="Mover para a esquerda" @onclick="() => MoverQuadro(quadro, -1)">◀</button>
+                <button class="btn sm" type="button" disabled="@(t.Quadros.IndexOf(quadro) == t.Quadros.Count - 1)" title="Mover para a direita" @onclick="() => MoverQuadro(quadro, 1)">▶</button>
+                <button class="btn sm danger" type="button" @onclick="() => ExcluirQuadro(quadro)">@Icones.Excluir</button>
+            </div>
+        }
+    </div>
+
+    <div class="estante-busca tarefas-filtros">
+        <input class="select" type="search" placeholder="Buscar tarefa..." @bind="_filtroTexto" @bind:event="oninput">
+        <select class="select" @bind="_filtroPrioridade">
+            <option value="">Todas as prioridades</option>
+            @foreach (var p in PrioridadeTarefa.Todas)
+            {
+                <option value="@p.Chave">@p.Nome</option>
+            }
+        </select>
+        @if (etiquetas.Count > 0)
+        {
+            <select class="select" @bind="_filtroEtiqueta">
+                <option value="">Todas as etiquetas</option>
+                @foreach (var e in etiquetas)
+                {
+                    <option value="@e">#@e</option>
+                }
+            </select>
+        }
+        @if (!emHoje)
+        {
+            <label class="check"><input type="checkbox" @bind="_ocultarAntigos"> Ocultar concluídas há mais de @TarefasCalculos.DiasConcluidosVisiveis dias</label>
+        }
+    </div>
+
+    @if (emHoje)
+    {
+        var lista = TarefasCalculos.DeHoje(t, hoje).Where(Passa).ToList();
+        @if (lista.Count == 0)
+        {
+            <div class="chart-empty">Nada para hoje. Cards com prazo até hoje ou marcados como foco (☆) aparecem aqui.</div>
+        }
+        else
+        {
+            <div class="lista-hoje">
+                @foreach (var c in lista)
+                {
+                    @CardView(c, true)
+                }
+            </div>
+        }
+    }
+    else if (quadro is not null)
+    {
+        <div class="kanban">
+            @foreach (var col in quadro.Colunas)
+            {
+                var ultima = TarefasCalculos.EhConcluida(quadro, col.Id);
+                var cards = TarefasCalculos.DaColuna(t, col.Id)
+                    .Where(Passa)
+                    .Where(c => !(ultima && _ocultarAntigos && c.Concluido is DateOnly f && hoje.DayNumber - f.DayNumber > TarefasCalculos.DiasConcluidosVisiveis))
+                    .ToList();
+                <div class="coluna @(_sobreColuna == col.Id ? "alvo" : "")" @key="col.Id"
+                     @ondragover="() => _sobreColuna = col.Id" @ondragover:preventDefault="true"
+                     @ondrop="() => Soltar(col.Id, null)">
+                    <div class="coluna-head">
+                        <b>@col.Nome</b>
+                        <span class="tab-count">@cards.Count</span>
+                        <span class="coluna-acoes">
+                            <button type="button" title="Renomear coluna" @onclick="() => RenomearColuna(col)">@Icones.Editar</button>
+                            @if (quadro.Colunas.Count > 1)
+                            {
+                                <button type="button" title="Excluir coluna" @onclick="() => ExcluirColuna(quadro, col)">@Icones.Excluir</button>
+                            }
+                        </span>
+                    </div>
+                    <div class="coluna-cards">
+                        @foreach (var c in cards)
+                        {
+                            <div class="card-arrastavel" @key="c.Id" draggable="true"
+                                 @ondragstart="() => _arrastando = c.Id" @ondragend="() => (_arrastando, _sobreColuna) = (null, null)"
+                                 @ondrop="() => Soltar(col.Id, c)" @ondrop:stopPropagation="true">
+                                @CardView(c, false)
+                            </div>
+                        }
+                    </div>
+                    <button type="button" class="coluna-add" @onclick="() => AbrirNovo(quadro, col)">+ Adicionar tarefa</button>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@* ---- Editor do card ---- *@
+@if (_editando is not null)
+{
+    var qEd = Dados.Quadros.FirstOrDefault(q => q.Id == _fQuadro) ?? Dados.Quadros[0];
+    <div class="modal-backdrop" @onclick="Fechar">
+        <form class="card modal modal-largo" autocomplete="off" @onclick:stopPropagation="true" @onsubmit="Salvar">
+            <h2>@(_novo ? "Nova tarefa" : "Editar tarefa")</h2>
+            <div class="form-grid">
+                <label class="field full"><span>Título *</span><input maxlength="140" required @bind="_fTitulo"></label>
+                <label class="field"><span>Quadro</span>
+                    <select @bind="_fQuadro" @bind:after="AoTrocarQuadro">
+                        @foreach (var q in Dados.Quadros)
+                        {
+                            <option value="@q.Id">@TarefasCalculos.NomeQuadro(q)</option>
+                        }
+                    </select></label>
+                <label class="field"><span>Coluna</span>
+                    <select @bind="_fColuna">
+                        @foreach (var col in qEd.Colunas)
+                        {
+                            <option value="@col.Id">@col.Nome</option>
+                        }
+                    </select></label>
+                <label class="field"><span>Prazo</span><input type="date" @bind="_fPrazo"></label>
+                <label class="field"><span>Prioridade</span>
+                    <select @bind="_fPrioridade">
+                        @foreach (var p in PrioridadeTarefa.Todas)
+                        {
+                            <option value="@p.Chave">@p.Nome</option>
+                        }
+                    </select></label>
+                <label class="field full"><span>Etiquetas</span><input maxlength="120" placeholder="separadas por vírgula (ex.: cliente, urgente)" @bind="_fEtiquetas"></label>
+                <label class="field full"><span>Descrição</span><textarea rows="3" maxlength="2000" @bind="_fDescricao"></textarea></label>
+                <div class="field full">
+                    <span>Checklist</span>
+                    <ul class="checklist">
+                        @foreach (var item in _fChecklist)
+                        {
+                            <li>
+                                <input type="checkbox" @bind="item.Feito">
+                                <input class="select" maxlength="140" @bind="item.Texto">
+                                <button type="button" title="Remover item" @onclick="() => _fChecklist.Remove(item)">@Icones.Excluir</button>
+                            </li>
+                        }
+                    </ul>
+                    <div class="busca-linha">
+                        <input class="select" maxlength="140" placeholder="Novo item..." @bind="_fNovoItem" @bind:event="oninput" @onkeydown="AoTeclarItem" data-sem-enviar>
+                        <button class="btn sm" type="button" @onclick="AdicionarItem">Adicionar</button>
+                    </div>
+                </div>
+                <label class="check full"><input type="checkbox" @bind="_fFoco"> Mostrar em "Hoje" mesmo sem prazo (foco do dia)</label>
+            </div>
+            <div class="form-actions">
+                @if (!_novo)
+                {
+                    <button class="btn danger" type="button" @onclick="Excluir">Excluir</button>
+                }
+                <button class="btn" type="button" @onclick="Fechar">Cancelar</button>
+                <button class="btn primary" type="submit">@(_novo ? "Criar tarefa" : "Salvar alterações")</button>
+            </div>
+        </form>
+    </div>
+}
+
+<DialogoTexto @ref="_dialogoNome" />
+
+@code {
+    [SupplyParameterFromQuery(Name = "quadro")] public string? QuadroDoLink { get; set; }
+
+    // Filtros mantidos enquanto o app estiver aberto
+    private static string _filtroPrioridade = "", _filtroEtiqueta = "";
+    private static bool _ocultarAntigos = true;
+    private string _filtroTexto = "";
+
+    private string? _arrastando, _sobreColuna;
+    private DialogoTexto _dialogoNome = default!;
+
+    private CardTarefa? _editando;
+    private bool _novo;
+    private string _fTitulo = "", _fQuadro = "", _fColuna = "", _fPrioridade = "media", _fEtiquetas = "", _fDescricao = "", _fNovoItem = "";
+    private DateOnly? _fPrazo;
+    private bool _fFoco;
+    private List<ItemChecklist> _fChecklist = [];
+
+    private DadosTarefas Dados => Store.Dados.Tarefas;
+
+    protected override void OnParametersSet()
+    {
+        if (QuadroDoLink is not null && (QuadroDoLink == Quadro.Hoje || Dados.Quadros.Any(q => q.Id == QuadroDoLink)))
+            Dados.Ativo = QuadroDoLink;
+    }
+
+    private bool Passa(CardTarefa c)
+    {
+        var termo = _filtroTexto.Trim();
+        return (_filtroPrioridade == "" || c.Prioridade == _filtroPrioridade)
+            && (_filtroEtiqueta == "" || c.Etiquetas.Contains(_filtroEtiqueta))
+            && (termo.Length == 0 || c.Titulo.Contains(termo, StringComparison.CurrentCultureIgnoreCase)
+                || (c.Descricao?.Contains(termo, StringComparison.CurrentCultureIgnoreCase) ?? false));
+    }
+
+    private RenderFragment CardView(CardTarefa c, bool mostrarQuadro) => __builder =>
+    {
+        var q = TarefasCalculos.QuadroDe(Dados, c);
+        var prio = PrioridadeTarefa.Buscar(c.Prioridade);
+        var feitos = c.Checklist.Count(i => i.Feito);
+        <div class="tarefa @(c.Concluido is not null ? "feita" : "") prio-@c.Prioridade" @onclick="() => AbrirEdicao(c)">
+            <div class="tarefa-topo">
+                <button type="button" class="tarefa-check" title="@(c.Concluido is null ? "Marcar como concluída" : "Reabrir")"
+                        @onclick="() => AlternarConcluida(c)" @onclick:stopPropagation="true">@(c.Concluido is null ? "" : "✓")</button>
+                <span class="tarefa-titulo">@c.Titulo</span>
+                <button type="button" class="tarefa-foco @(c.Foco ? "on" : "")" title="Foco do dia"
+                        @onclick="() => AlternarFoco(c)" @onclick:stopPropagation="true">@(c.Foco ? "★" : "☆")</button>
+            </div>
+            @if (!string.IsNullOrEmpty(c.Descricao))
+            {
+                <p class="tarefa-desc">@c.Descricao</p>
+            }
+            @if (c.Checklist.Count > 0)
+            {
+                <div class="tarefa-progresso" title="@feitos de @c.Checklist.Count itens">
+                    <span style="width: @((feitos * 100 / c.Checklist.Count).ToString())%"></span>
+                </div>
+            }
+            <div class="tarefa-meta">
+                @if (mostrarQuadro && q is not null)
+                {
+                    <span class="badge">@TarefasCalculos.NomeQuadro(q)</span>
+                }
+                @if (c.Concluido is DateOnly f)
+                {
+                    <span class="badge good">feita @(f == Hoje ? "hoje" : DataCurta(f))</span>
+                }
+                else if (c.Prazo is DateOnly p)
+                {
+                    var (texto, classe) = TarefasCalculos.Prazo(p, Hoje);
+                    <span class="badge @classe">@texto</span>
+                }
+                @if (c.Prioridade != "media")
+                {
+                    <span class="badge @prio.Classe">@prio.Nome</span>
+                }
+                @if (c.Checklist.Count > 0)
+                {
+                    <span class="badge">☑ @feitos/@c.Checklist.Count</span>
+                }
+                @foreach (var e in c.Etiquetas)
+                {
+                    <span class="etiqueta">#@e</span>
+                }
+            </div>
+        </div>
+    };
+
+    private void Abrir(string id)
+    {
+        Dados.Ativo = id;
+        Store.Salvar();
+    }
+
+    // ---- Arrastar e soltar ----
+    private void Soltar(string colunaId, CardTarefa? antesDe)
+    {
+        _sobreColuna = null;
+        var card = Dados.Cards.FirstOrDefault(c => c.Id == _arrastando);
+        _arrastando = null;
+        if (card is null || card == antesDe) return;
+        int? posicao = antesDe is null ? null : TarefasCalculos.DaColuna(Dados, colunaId).Where(c => c != card).ToList().IndexOf(antesDe);
+        TarefasCalculos.Mover(Dados, card, colunaId, posicao, Hoje);
+        Store.Salvar();
+    }
+
+    private void AlternarConcluida(CardTarefa c)
+    {
+        TarefasCalculos.AlternarConcluida(Dados, c, Hoje);
+        Store.Salvar();
+    }
+
+    private void AlternarFoco(CardTarefa c)
+    {
+        c.Foco = !c.Foco;
+        Store.Salvar();
+    }
+
+    // ---- Quadros e colunas ----
+    private async Task NovoQuadro()
+    {
+        var nome = await _dialogoNome.Perguntar("Novo quadro", "Nome do quadro (pode começar com um emoji, ex.: 🎓 Faculdade)");
+        if (nome is null) return;
+        var (emoji, resto) = SepararEmoji(nome);
+        var q = TarefasCalculos.NovoQuadro(resto, emoji);
+        Dados.Quadros.Add(q);
+        Abrir(q.Id);
+        Toast.Ok($"Quadro \"{TarefasCalculos.NomeQuadro(q)}\" criado.");
+    }
+
+    private async Task RenomearQuadro(Quadro q)
+    {
+        var nome = await _dialogoNome.Perguntar("Renomear quadro", "Nome do quadro (pode começar com um emoji)", TarefasCalculos.NomeQuadro(q));
+        if (nome is null) return;
+        (q.Emoji, q.Nome) = SepararEmoji(nome);
+        Store.Salvar();
+    }
+
+    private void MoverQuadro(Quadro q, int direcao)
+    {
+        var i = Dados.Quadros.IndexOf(q);
+        var j = i + direcao;
+        if (j < 0 || j >= Dados.Quadros.Count) return;
+        (Dados.Quadros[i], Dados.Quadros[j]) = (Dados.Quadros[j], Dados.Quadros[i]);
+        Store.Salvar();
+    }
+
+    private async Task ExcluirQuadro(Quadro q)
+    {
+        var n = Dados.Cards.Count(c => c.QuadroId == q.Id);
+        if (Dados.Quadros.Count == 1) { Toast.Erro("Você precisa ter pelo menos um quadro."); return; }
+        if (!await Dialogo.Confirmar($"Excluir o quadro \"{TarefasCalculos.NomeQuadro(q)}\"?\n{(n > 0 ? $"As {n} tarefas dele também serão apagadas." : "Ele está vazio.")}")) return;
+        Dados.Cards.RemoveAll(c => c.QuadroId == q.Id);
+        Dados.Quadros.Remove(q);
+        Abrir(Dados.Quadros[0].Id);
+        Toast.Ok("Quadro excluído.");
+    }
+
+    private async Task NovaColuna(Quadro q)
+    {
+        var nome = await _dialogoNome.Perguntar("Nova coluna", "Nome da coluna (ex.: Esperando, Revisão)");
+        if (nome is null) return;
+        // Entra antes da coluna de concluídos, que continua sendo a última
+        q.Colunas.Insert(Math.Max(0, q.Colunas.Count - 1), new ColunaQuadro { Id = ArmazenamentoService.NovoId(), Nome = nome });
+        Store.Salvar();
+    }
+
+    private async Task RenomearColuna(ColunaQuadro col)
+    {
+        var nome = await _dialogoNome.Perguntar("Renomear coluna", "Nome da coluna", col.Nome);
+        if (nome is null) return;
+        col.Nome = nome;
+        Store.Salvar();
+    }
+
+    private async Task ExcluirColuna(Quadro q, ColunaQuadro col)
+    {
+        var cards = TarefasCalculos.DaColuna(Dados, col.Id);
+        var destino = q.Colunas.First(c => c != col);
+        if (!await Dialogo.Confirmar($"Excluir a coluna \"{col.Nome}\"?\n{(cards.Count > 0 ? $"As {cards.Count} tarefas dela vão para \"{destino.Nome}\"." : "Ela está vazia.")}")) return;
+        q.Colunas.Remove(col);
+        foreach (var c in cards) TarefasCalculos.Mover(Dados, c, destino.Id, null, Hoje);
+        // A coluna de concluídos pode ter mudado: acerta as datas de conclusão
+        foreach (var c in Dados.Cards.Where(c => c.QuadroId == q.Id))
+        {
+            if (TarefasCalculos.EhConcluida(q, c.ColunaId)) c.Concluido ??= Hoje;
+            else c.Concluido = null;
+        }
+        Store.Salvar();
+    }
+
+    private static (string? Emoji, string Nome) SepararEmoji(string texto)
+    {
+        var partes = texto.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var primeiro = partes[0];
+        var ehEmoji = partes.Length == 2 && primeiro.Length <= 8 && !primeiro.Any(char.IsLetterOrDigit);
+        return ehEmoji ? (primeiro, partes[1].Trim()) : (null, texto.Trim());
+    }
+
+    // ---- Editor ----
+    private void AbrirNovo(Quadro q, ColunaQuadro col)
+    {
+        _novo = true;
+        _editando = new CardTarefa();
+        PreencherForm(_editando, q.Id, col.Id);
+    }
+
+    private void AbrirEdicao(CardTarefa c)
+    {
+        _novo = false;
+        _editando = c;
+        PreencherForm(c, c.QuadroId, c.ColunaId);
+    }
+
+    private void PreencherForm(CardTarefa c, string quadroId, string colunaId)
+    {
+        (_fQuadro, _fColuna) = (quadroId, colunaId);
+        _fTitulo = c.Titulo;
+        _fDescricao = c.Descricao ?? "";
+        _fPrazo = c.Prazo;
+        _fPrioridade = c.Prioridade;
+        _fEtiquetas = string.Join(", ", c.Etiquetas);
+        _fFoco = c.Foco;
+        _fChecklist = c.Checklist.Select(i => new ItemChecklist { Texto = i.Texto, Feito = i.Feito }).ToList();
+        _fNovoItem = "";
+    }
+
+    private void AoTrocarQuadro()
+    {
+        var q = Dados.Quadros.FirstOrDefault(q => q.Id == _fQuadro);
+        if (q is not null && q.Colunas.All(c => c.Id != _fColuna)) _fColuna = q.Colunas[0].Id;
+    }
+
+    private void AoTeclarItem(KeyboardEventArgs e)
+    {
+        // Enter no campo do checklist adiciona o item (o interop.js impede que envie o formulário)
+        if (e.Key == "Enter") AdicionarItem();
+    }
+
+    private void AdicionarItem()
+    {
+        if (string.IsNullOrWhiteSpace(_fNovoItem)) return;
+        _fChecklist.Add(new ItemChecklist { Texto = _fNovoItem.Trim() });
+        _fNovoItem = "";
+    }
+
+    private void Fechar() => _editando = null;
+
+    private void Salvar()
+    {
+        if (_editando is not { } c) return;
+        var titulo = _fTitulo.Trim();
+        if (titulo.Length == 0) { Toast.Erro("Informe o título."); return; }
+        AdicionarItem();
+
+        c.Titulo = titulo;
+        c.Descricao = string.IsNullOrWhiteSpace(_fDescricao) ? null : _fDescricao.Trim();
+        c.Prazo = _fPrazo;
+        c.Prioridade = _fPrioridade;
+        c.Foco = _fFoco;
+        c.Etiquetas = _fEtiquetas.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(e => e.TrimStart('#').ToLowerInvariant()).Where(e => e.Length > 0).Distinct().ToList();
+        c.Checklist = _fChecklist.Where(i => !string.IsNullOrWhiteSpace(i.Texto)).ToList();
+
+        if (_novo)
+        {
+            c.Id = ArmazenamentoService.NovoId();
+            c.Criado = Hoje;
+            Dados.Cards.Add(c);
+        }
+        if (_novo || c.QuadroId != _fQuadro || c.ColunaId != _fColuna)
+        {
+            c.QuadroId = _fQuadro;
+            TarefasCalculos.Mover(Dados, c, _fColuna, null, Hoje);
+        }
+        Store.Salvar();
+        Toast.Ok(_novo ? "Tarefa criada." : "Tarefa atualizada.");
+        Fechar();
+    }
+
+    private async Task Excluir()
+    {
+        if (_editando is not { } c || !await Dialogo.Confirmar($"Excluir a tarefa \"{c.Titulo}\"?")) return;
+        Dados.Cards.Remove(c);
+        Store.Salvar();
+        Fechar();
+        Toast.Ok("Tarefa excluída.");
+    }
+}

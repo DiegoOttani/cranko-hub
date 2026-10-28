@@ -1,0 +1,23 @@
+@* Capa de um item da estante: imagem salva no PC, imagem da internet (prévia) ou um quadro com a inicial do título *@
+
+@{
+    var src = UrlExterna ?? CapasService.Url(Item?.Capa ?? Arquivo);
+    var titulo = Item?.Titulo ?? Titulo ?? "";
+}
+<span class="capa">
+    @if (src is not null)
+    {
+        <img src="@src" alt="" loading="lazy">
+    }
+    else
+    {
+        <span class="capa-vazia"><b>@(titulo.Length > 0 ? titulo[..1].ToUpperInvariant() : "?")</b><small>@titulo</small></span>
+    }
+</span>
+
+@code {
+    [Parameter] public ItemEntretenimento? Item { get; set; }
+    [Parameter] public string? Arquivo { get; set; }
+    [Parameter] public string? UrlExterna { get; set; }
+    [Parameter] public string? Titulo { get; set; }
+}

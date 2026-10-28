@@ -1,0 +1,305 @@
+@page "/dieta"
+@inject ArmazenamentoService Store
+@inject ToastService Toast
+@inject IDialogoService Dialogo
+@inject IJSRuntime JS
+
+@{
+    var perfil = Store.Dados.Dieta.Perfil;
+    var rs = DietaCalculos.Ordenados(Store.Dados.Dieta.Registros);
+    var first = rs.FirstOrDefault();
+    var last = rs.LastOrDefault();
+    var meta = perfil.Meta;
+    var altura = perfil.Altura;
+    var perdendo = meta is null || first is null || meta < first.Peso;
+    double? imc = last is not null && altura > 0 ? DietaCalculos.Imc(last.Peso, altura.Value) : null;
+    var (imcRotulo, imcClasse) = imc is not null ? DietaCalculos.ClasseImc(imc.Value) : ("Informe sua altura", "");
+    var slope = DietaCalculos.Tendencia(rs);
+    double? semana = slope * 7;
+
+    var previsao = Vazio;
+    var previsaoSub = "Precisa de 3+ registros em 30 dias";
+    if (last is not null && meta is not null)
+    {
+        var falta = meta.Value - last.Peso;
+        if (Math.Abs(falta) < 0.05) { previsao = "Atingida!"; previsaoSub = "Parabéns, meta alcançada"; }
+        else if (slope is double s && s != 0 && Math.Sign(s) == Math.Sign(falta))
+        {
+            var dias = falta / s;
+            if (dias <= 3650)
+            {
+                previsao = DataCurtaAno(last.Data.AddDays((int)Math.Floor(dias)));
+                previsaoSub = $"em ~{Math.Round(dias):0} dias no ritmo atual";
+            }
+            else previsaoSub = "Mais de 10 anos no ritmo atual";
+        }
+        else if (slope is not null) previsaoSub = "O ritmo atual não leva à meta";
+    }
+    else if (meta is null) previsaoSub = "Defina uma meta de peso";
+
+    double? progresso = first is not null && last is not null && meta is not null && first.Peso != meta
+        ? Math.Clamp((first.Peso - last.Peso) / (first.Peso - meta.Value) * 100, 0, 100) : null;
+    var ed = Editando();
+
+    // Gráfico de peso
+    var corte = _periodo > 0 && last is not null ? last.Data.AddDays(-_periodo) : DateOnly.MinValue;
+    var seriesPeso = new List<SerieLinha>
+    {
+        new("Peso", "var(--series-1)", rs.Where(r => r.Data >= corte).Select(r => new PontoLinha(r.Data, r.Peso, r.Obs)).ToList()),
+        new("Média 7 dias", "var(--series-2)", DietaCalculos.MediaMovel(rs).Where(p => p.X >= corte).ToList(), Markers: false),
+    };
+    var gordura = _medida == "gordura";
+    var pontosMedida = rs.Where(r => (gordura ? r.Gordura : r.Cintura) is not null)
+        .Select(r => new PontoLinha(r.Data, (gordura ? r.Gordura : r.Cintura)!.Value)).ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1>Dieta</h1>
+        <p>Registre seu peso e medidas, defina uma meta e acompanhe a evolução.</p>
+    </div>
+</div>
+
+<section class="kpis">
+    <div class="kpi"><span class="kpi-label">Peso atual</span>
+        <span class="kpi-value">@(last is not null ? Num(last.Peso) : Vazio)<small>kg</small></span>
+        <span class="kpi-sub">@(last is not null ? "em " + DataBR(last.Data) : "Nenhum registro ainda")</span></div>
+    <div class="kpi"><span class="kpi-label">Variação total</span>
+        <span class="kpi-value">@(first is not null && rs.Count > 1 ? ComSinal(last!.Peso - first.Peso) : Vazio)<small>kg</small></span>
+        <span class="kpi-sub">@(first is not null && rs.Count > 1 ? "desde " + DataBR(first.Data) : "Precisa de 2+ registros")</span></div>
+    <div class="kpi"><span class="kpi-label">IMC</span>
+        <span class="kpi-value">@(imc is not null ? Num(imc) : Vazio)</span>
+        <span class="kpi-sub">@if (imcClasse != "") { <span class="badge @imcClasse">@imcRotulo</span> } else { @imcRotulo }</span></div>
+    <div class="kpi"><span class="kpi-label">Falta p/ meta</span>
+        <span class="kpi-value">@(last is not null && meta is not null ? Num(Math.Abs(last.Peso - meta.Value)) : Vazio)<small>kg</small></span>
+        <span class="kpi-sub">@(progresso is not null ? Num(progresso, 0) + "% do caminho" : "Defina uma meta")</span></div>
+    <div class="kpi"><span class="kpi-label">Ritmo</span>
+        <span class="kpi-value">@(semana is not null ? ComSinal(semana.Value, 2) : Vazio)<small>kg/sem</small></span>
+        <span class="kpi-sub">@(semana is not null ? "tendência dos últimos 30 dias" : "Precisa de mais registros")</span></div>
+    <div class="kpi"><span class="kpi-label">Previsão da meta</span>
+        <span class="kpi-value">@previsao</span>
+        <span class="kpi-sub">@previsaoSub</span></div>
+</section>
+
+<div class="grid-2">
+    <form class="card" autocomplete="off" @ref="_formRegistro" @onsubmit="SalvarRegistro">
+        <div class="card-head"><div><h2>@(ed is not null ? "Editar registro" : "Novo registro")</h2><p>Só o peso é obrigatório. Um registro por dia.</p></div></div>
+        <div class="form-grid">
+            <label class="field"><span>Data</span><input type="date" required @bind="_fData"></label>
+            <label class="field"><span>Peso (kg) *</span><input inputmode="decimal" required placeholder="ex.: 82,5" @bind="_fPeso"></label>
+            <label class="field"><span>% Gordura corporal</span><input inputmode="decimal" placeholder="opcional" @bind="_fGordura"></label>
+            <label class="field"><span>Cintura (cm)</span><input inputmode="decimal" placeholder="opcional" @bind="_fCintura"></label>
+            <label class="field full"><span>Observação</span><input maxlength="140" placeholder="treino, refeição livre, como se sentiu..." @bind="_fObs"></label>
+        </div>
+        <div class="form-actions">
+            <button class="btn primary" type="submit">@(ed is not null ? "Salvar alterações" : "Adicionar registro")</button>
+            @if (ed is not null)
+            {
+                <button class="btn" type="button" @onclick="LimparFormulario">Cancelar</button>
+            }
+        </div>
+    </form>
+
+    <form class="card" autocomplete="off" @onsubmit="SalvarPerfil">
+        <div class="card-head"><div><h2>Perfil e meta</h2><p>Usados para IMC, progresso e previsão.</p></div></div>
+        <div class="form-grid">
+            <label class="field"><span>Altura (cm)</span><input inputmode="decimal" placeholder="ex.: 175" @bind="_fAltura"></label>
+            <label class="field"><span>Peso meta (kg)</span><input inputmode="decimal" placeholder="ex.: 78" @bind="_fMeta"></label>
+        </div>
+        @if (progresso is not null)
+        {
+            <div class="progress" role="progressbar" aria-valuenow="@Math.Round(progresso.Value)" aria-valuemin="0" aria-valuemax="100">
+                <div style="width:@(progresso.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%"></div>
+            </div>
+            <div class="progress-legend"><span>Início <b>@Num(first!.Peso) kg</b></span><span><b>@Num(progresso, 0)%</b> concluído</span><span>Meta <b>@Num(meta) kg</b></span></div>
+        }
+        <div class="form-actions"><button class="btn primary" type="submit">Salvar perfil</button></div>
+    </form>
+</div>
+
+<section class="card">
+    <div class="card-head">
+        <div><h2>Evolução do peso</h2><p>Passe o mouse no gráfico para ver os valores de cada dia.</p></div>
+        <div class="chips">
+            @foreach (var (dias, rotulo) in Periodos)
+            {
+                <button type="button" class="chip @(_periodo == dias ? "active" : "")" @onclick="() => _periodo = dias">@rotulo</button>
+            }
+        </div>
+    </div>
+    <Legenda Itens="@(rs.Count > 0 ? seriesPeso.Select(s => new ItemLegenda(s.Name, s.Color)).ToList() : [])" />
+    <GraficoLinha Series="seriesPeso" Altura="300" Formato="FormatoNumero.Kg" Rotulo="Evolução do peso"
+                  Referencias="@(meta is not null && rs.Count > 0 ? [new ReferenciaLinha(meta.Value, $"Meta {Num(meta)} kg")] : [])"
+                  MsgVazia="Adicione seu primeiro peso para ver o gráfico." />
+</section>
+
+<div class="grid-2">
+    <section class="card">
+        <div class="card-head"><div><h2>Variação semanal</h2><p>Diferença de peso entre o fim de cada semana (últimas 12).</p></div></div>
+        <GraficoBarras Dados="DietaCalculos.Semanal(rs)" Nome="Variação" Altura="240"
+                       FormatoY="new FormatoNumero(1)" Formato="@(new FormatoNumero(1, " kg", Sinal: true))"
+                       MsgVazia="Precisa de registros em pelo menos 2 semanas." />
+    </section>
+    <section class="card">
+        <div class="card-head">
+            <div><h2>Medidas corporais</h2><p>Registre de tempos em tempos para ver a composição mudar.</p></div>
+            <div class="chips">
+                <button type="button" class="chip @(gordura ? "active" : "")" @onclick="@(() => _medida = "gordura")">% Gordura</button>
+                <button type="button" class="chip @(!gordura ? "active" : "")" @onclick="@(() => _medida = "cintura")">Cintura</button>
+            </div>
+        </div>
+        <GraficoLinha Altura="240" Formato="@(new FormatoNumero(1, gordura ? "%" : " cm"))"
+                      Series="@([new SerieLinha(gordura ? "% Gordura" : "Cintura", "var(--series-3)", pontosMedida, Area: true)])"
+                      MsgVazia="@($"Sem registros de {(gordura ? "% de gordura" : "cintura")} ainda.")" />
+    </section>
+</div>
+
+<section class="card">
+    <div class="card-head"><div><h2>Histórico</h2><p>@rs.Count @Plural(rs.Count, "registro", "registros")</p></div></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Data</th><th class="num">Peso</th><th class="num">Variação</th><th class="num">IMC</th><th class="num">Gordura</th><th class="num">Cintura</th><th>Observação</th><th></th></tr></thead>
+            <tbody>
+                @if (rs.Count == 0)
+                {
+                    <tr><td colspan="8" class="empty-row">Nenhum registro ainda. Adicione seu peso de hoje acima ⬆</td></tr>
+                }
+                @for (var i = rs.Count - 1; i >= 0; i--)
+                {
+                    var r = rs[i];
+                    var anterior = i > 0 ? rs[i - 1] : null;
+                    <tr @key="r.Id">
+                        <td>@DataBR(r.Data)</td>
+                        <td class="num"><b>@Num(r.Peso) kg</b></td>
+                        <td class="num">@if (anterior is not null) { <Delta Valor="r.Peso - anterior.Peso" Unidade=" kg" BomQuandoCai="perdendo" /> } else { <span class="muted">—</span> }</td>
+                        <td class="num">@(altura > 0 ? Num(DietaCalculos.Imc(r.Peso, altura.Value)) : Vazio)</td>
+                        <td class="num">@(r.Gordura is not null ? Num(r.Gordura) + "%" : Vazio)</td>
+                        <td class="num">@(r.Cintura is not null ? Num(r.Cintura) + " cm" : Vazio)</td>
+                        <td class="obs">@r.Obs</td>
+                        <td><div class="row-actions">
+                            <button type="button" title="Editar" @onclick="() => Editar(r)">@Icones.Editar</button>
+                            <button type="button" class="del" title="Excluir" @onclick="() => Excluir(r)">@Icones.Excluir</button>
+                        </div></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private static readonly (int Dias, string Rotulo)[] Periodos = [(30, "30 dias"), (90, "90 dias"), (365, "1 ano"), (0, "Tudo")];
+
+    // Preferências de visualização mantidas enquanto o app estiver aberto
+    private static int _periodo = 90;          // período do gráfico de peso (dias, 0 = tudo)
+    private static string _medida = "gordura"; // gráfico de medidas: "gordura" | "cintura"
+
+    private string? _editId;
+    private ElementReference _formRegistro;
+    private bool _rolarParaFormulario;
+
+    private DateOnly? _fData = Hoje;
+    private string _fPeso = "", _fGordura = "", _fCintura = "", _fObs = "";
+    private string _fAltura = "", _fMeta = "";
+
+    private List<RegistroPeso> Registros => Store.Dados.Dieta.Registros;
+
+    private RegistroPeso? Editando() => _editId is null ? null : Registros.FirstOrDefault(r => r.Id == _editId);
+
+    protected override void OnInitialized() => PreencherPerfil();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_rolarParaFormulario) return;
+        _rolarParaFormulario = false;
+        await JS.InvokeVoidAsync("crankohub.rolarAte", _formRegistro);
+    }
+
+    private void PreencherPerfil()
+    {
+        _fAltura = InVal(Store.Dados.Dieta.Perfil.Altura, 1);
+        _fMeta = InVal(Store.Dados.Dieta.Perfil.Meta, 1);
+    }
+
+    private void LimparFormulario()
+    {
+        _editId = null;
+        _fData = Hoje;
+        _fPeso = _fGordura = _fCintura = _fObs = "";
+    }
+
+    private void Editar(RegistroPeso r)
+    {
+        _editId = r.Id;
+        _fData = r.Data;
+        _fPeso = InVal(r.Peso, 1);
+        _fGordura = InVal(r.Gordura, 1);
+        _fCintura = InVal(r.Cintura, 1);
+        _fObs = r.Obs ?? "";
+        _rolarParaFormulario = true;
+    }
+
+    private async Task Excluir(RegistroPeso r)
+    {
+        if (!await Dialogo.Confirmar($"Excluir o registro de {DataBR(r.Data)} ({Num(r.Peso)} kg)?")) return;
+        Registros.Remove(r);
+        if (_editId == r.Id) LimparFormulario();
+        Store.Salvar();
+        Toast.Ok("Registro excluído.");
+    }
+
+    private void SalvarRegistro()
+    {
+        if (_fData is not DateOnly data) { Toast.Erro("Informe a data."); return; }
+        var peso = Pf(_fPeso);
+        var gordura = Pf(_fGordura);
+        var cintura = Pf(_fCintura);
+        if (peso is not (>= 20 and <= 400)) { Toast.Erro("Informe um peso válido (20 a 400 kg)."); return; }
+        if (gordura is not null && gordura is not (> 0 and < 80)) { Toast.Erro("% de gordura inválida."); return; }
+
+        void Preencher(RegistroPeso r)
+        {
+            r.Data = data;
+            r.Peso = peso.Value;
+            r.Gordura = gordura;
+            r.Cintura = cintura;
+            r.Obs = string.IsNullOrWhiteSpace(_fObs) ? null : _fObs.Trim();
+        }
+
+        var ed = Editando();
+        var mesmoDia = Registros.FirstOrDefault(r => r.Data == data && r.Id != _editId);
+        if (ed is not null)
+        {
+            if (mesmoDia is not null) { Toast.Erro("Já existe um registro nessa data."); return; }
+            Preencher(ed);
+            Toast.Ok("Registro atualizado.");
+        }
+        else if (mesmoDia is not null)
+        {
+            Preencher(mesmoDia);
+            Toast.Ok("Já havia um registro nesse dia — ele foi atualizado.");
+        }
+        else
+        {
+            var novo = new RegistroPeso { Id = ArmazenamentoService.NovoId() };
+            Preencher(novo);
+            Registros.Add(novo);
+            Toast.Ok("Peso registrado!");
+        }
+        LimparFormulario();
+        Store.Salvar();
+    }
+
+    private void SalvarPerfil()
+    {
+        var altura = Pf(_fAltura);
+        var meta = Pf(_fMeta);
+        if (altura is not null && altura is not (>= 50 and <= 250)) { Toast.Erro("Altura em centímetros (ex.: 175)."); return; }
+        if (meta is not null && meta is not (>= 20 and <= 400)) { Toast.Erro("Meta de peso inválida."); return; }
+        Store.Dados.Dieta.Perfil.Altura = altura;
+        Store.Dados.Dieta.Perfil.Meta = meta;
+        Store.Salvar();
+        PreencherPerfil();
+        Toast.Ok("Perfil salvo.");
+    }
+}
