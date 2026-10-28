@@ -54,6 +54,16 @@
 </section>
 
 <section class="card">
+    <div class="card-head"><div><h2>Módulos</h2><p>Escolha o que aparece no menu, no Início e nos avisos. Esconder um módulo não apaga os dados dele.</p></div></div>
+    <div class="opcoes">
+        @foreach (var m in Modulo.Todos)
+        {
+            <label class="check" @key="m.Id"><input type="checkbox" checked="@Modulo.Visivel(cfg, m.Id)" @onchange="@(e => Store.MostrarModulo(m.Id, e.Value is true))"> <b>@m.Nome</b> <span class="muted">· @m.Descricao</span></label>
+        }
+    </div>
+</section>
+
+<section class="card">
     <div class="card-head"><div><h2>Entretenimento</h2><p>A busca de dados e capas já funciona sem nenhuma chave. As chaves abaixo são opcionais e trazem mais resultados.</p></div></div>
     <div class="form-grid">
         <label class="field"><span>Chave do TMDB (opcional: filmes, séries e animações)</span>

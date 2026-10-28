@@ -15,11 +15,10 @@
         </div>
         <nav class="nav">
             <NavLink href="" Match="NavLinkMatch.All">@Icones.Inicio<span>Início</span></NavLink>
-            <NavLink href="dieta">@Icones.Dieta<span>Dieta</span></NavLink>
-            <NavLink href="carro">@Icones.Carro<span>Carro</span></NavLink>
-            <NavLink href="assinaturas">@Icones.Assinaturas<span>Assinaturas</span></NavLink>
-            <NavLink href="entretenimento">@Icones.Entretenimento<span>Entretenimento</span></NavLink>
-            <NavLink href="tarefas">@Icones.Tarefas<span>Tarefas</span></NavLink>
+            @foreach (var m in Modulo.Visiveis(Store.Dados.Config))
+            {
+                <NavLink @key="m.Id" href="@m.Link">@m.Icone<span>@m.Nome</span></NavLink>
+            }
             <div class="nav-sep"></div>
             <NavLink href="configuracoes">@Icones.Engrenagem<span>Configurações</span></NavLink>
         </nav>
@@ -63,7 +62,10 @@
         _caminho = CaminhoAtual();
         Nav.LocationChanged += AoNavegar;
         Navegacao.AoNavegar += AbrirPagina;
+        Store.ModulosMudaram += AtualizarMenu;
     }
+
+    private void AtualizarMenu() => _ = InvokeAsync(StateHasChanged);
 
     // Pedido vindo de fora do Blazor (ex.: clique numa notificação)
     private void AbrirPagina(string link) => _ = InvokeAsync(() => Nav.NavigateTo(link));
@@ -98,5 +100,6 @@
     {
         Nav.LocationChanged -= AoNavegar;
         Navegacao.AoNavegar -= AbrirPagina;
+        Store.ModulosMudaram -= AtualizarMenu;
     }
 }

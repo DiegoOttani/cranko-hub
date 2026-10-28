@@ -39,6 +39,9 @@ public class Configuracoes
     /// <summary>Token do GitHub (só leitura) para baixar atualizações do repositório privado.</summary>
     public string? TokenGitHub { get; set; }
 
+    /// <summary>Módulos escondidos do menu, do Início e dos avisos (os dados continuam salvos).</summary>
+    public List<string> ModulosOcultos { get; set; } = [];
+
     public bool VerificarAtualizacoes { get; set; } = true;
 
     public DateOnly? UltimaVerificacaoAtualizacao { get; set; }

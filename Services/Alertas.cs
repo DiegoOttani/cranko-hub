@@ -27,9 +27,10 @@ public static class Alertas
     public static List<Alerta> Gerar(EstadoApp d, DateOnly hoje)
     {
         var lista = new List<Alerta>();
+        bool Ver(string modulo) => Modulo.Visivel(d.Config, modulo);
 
         // Manutenção de todos os veículos
-        foreach (var v in d.Carro.Veiculos)
+        foreach (var v in d.Carro.Veiculos.Where(_ => Ver(Modulo.Carro)))
         {
             var abast = CarroCalculos.DoVeiculo(d.Carro, v.Id);
             var manut = ManutencaoCalculos.DoVeiculo(d.Carro, v.Id);
@@ -45,7 +46,7 @@ public static class Alertas
         }
 
         // Documentos vencidos ou vencendo (os do motorista aparecem uma vez só)
-        foreach (var x in d.Carro.Documentos.Where(x => DocumentosCalculos.PrecisaAtencao(x, hoje)).OrderBy(x => x.Vencimento))
+        foreach (var x in d.Carro.Documentos.Where(x => Ver(Modulo.Carro) && DocumentosCalculos.PrecisaAtencao(x, hoje)).OrderBy(x => x.Vencimento))
         {
             var veic = d.Carro.Veiculos.FirstOrDefault(v => v.Id == x.VeiculoId);
             if (x.VeiculoId is not null && veic is null) continue;
@@ -58,7 +59,7 @@ public static class Alertas
         }
 
         // Cobranças de assinaturas chegando
-        foreach (var (a, data) in AssinaturasCalculos.CobrancasAte(d.Assinaturas.Where(a => a.Ativa), hoje, DiasAssinatura))
+        foreach (var (a, data) in AssinaturasCalculos.CobrancasAte(d.Assinaturas.Where(a => Ver(Modulo.Assinaturas) && a.Ativa), hoje, DiasAssinatura))
         {
             var (texto, classe) = AssinaturasCalculos.Prazo(data.DayNumber - hoje.DayNumber);
             lista.Add(new($"assinatura:{a.Id}:{Formatacao.Iso(data)}", $"{a.Nome} cobra {texto}",
@@ -67,7 +68,7 @@ public static class Alertas
         }
 
         // Tarefas atrasadas ou com prazo hoje
-        foreach (var c in d.Tarefas.Cards.Where(c => TarefasCalculos.Aberto(c) && c.Prazo <= hoje).OrderBy(c => c.Prazo))
+        foreach (var c in d.Tarefas.Cards.Where(c => Ver(Modulo.Tarefas) && TarefasCalculos.Aberto(c) && c.Prazo <= hoje).OrderBy(c => c.Prazo))
         {
             var (texto, classe) = TarefasCalculos.Prazo(c.Prazo!.Value, hoje);
             var q = TarefasCalculos.QuadroDe(d.Tarefas, c);
@@ -78,7 +79,7 @@ public static class Alertas
 
         // Peso sem registro há muito tempo (só para quem já usa a Dieta)
         var ultimoPeso = d.Dieta.Registros.Count > 0 ? d.Dieta.Registros.Max(r => r.Data) : (DateOnly?)null;
-        if (ultimoPeso is DateOnly up && hoje.DayNumber - up.DayNumber >= DiasSemPeso)
+        if (Ver(Modulo.Dieta) && ultimoPeso is DateOnly up && hoje.DayNumber - up.DayNumber >= DiasSemPeso)
         {
             var dias = hoje.DayNumber - up.DayNumber;
             lista.Add(new("peso", "Hora de se pesar", $"Último registro há {dias} dias ({Formatacao.DataBR(up)})",

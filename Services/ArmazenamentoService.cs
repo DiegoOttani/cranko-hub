@@ -38,6 +38,17 @@ public class ArmazenamentoService
 
     public EstadoApp Dados { get; private set; }
 
+    /// <summary>Avisa o menu quando um módulo é mostrado ou escondido.</summary>
+    public event Action? ModulosMudaram;
+
+    public void MostrarModulo(string id, bool visivel)
+    {
+        Dados.Config.ModulosOcultos.Remove(id);
+        if (!visivel) Dados.Config.ModulosOcultos.Add(id);
+        Salvar();
+        ModulosMudaram?.Invoke();
+    }
+
     /// <summary>Id curto e único (mesmo estilo do app web).</summary>
     public static string NovoId()
     {
@@ -164,6 +175,8 @@ public class ArmazenamentoService
             s.Carro.Ativo = s.Carro.Veiculos[0].Id;
         s.Config ??= new Configuracoes();
         s.Config.AvisosEnviados ??= [];
+        s.Config.ModulosOcultos ??= [];
+        s.Config.ModulosOcultos.RemoveAll(id => Modulo.Buscar(id) is null);
         s.Assinaturas ??= []; // backups antigos (e do app web) não têm assinaturas
         s.Assinaturas.RemoveAll(a => a is null);
         s.Entretenimento ??= [];

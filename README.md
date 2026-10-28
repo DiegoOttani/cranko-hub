@@ -131,12 +131,15 @@ Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes 
 - Visão **Hoje** junta, de todos os quadros, o que vence hoje, está atrasado ou foi marcado como foco (☆).
 - Resumo do dia no Início, tarefas atrasadas nos alertas e, a partir das 20h, uma notificação com o que foi concluído e o que ficou pendente.
 
-## 9. Melhoria na configurações
+## 9. Melhoria na configurações ✅ (feito)
 
-- Adicionar um modulo de plugin, onde é possivel escolher quais modulos vamos deixar visivel e quais não.
-- isso é util para nao deixar varias coisas inuteis na tela principal.
+- Card **Módulos** em Configurações: um interruptor para Dieta, Carro, Assinaturas, Entretenimento e Tarefas.
+- Um módulo desligado some do menu, dos cards do Início, do "Precisa de atenção" e das notificações (inclusive o resumo noturno das Tarefas).
+- **Os dados não são apagados**: ligar de novo traz tudo de volta, e o backup continua com tudo. A página ainda abre pelo endereço.
+- Fica salvo em `config.modulosOcultos`, uma lista dos **escondidos**, para que módulos novos já apareçam ligados.
+- No Início, quando só um card de uma dupla está visível, ele ocupa a linha inteira.
 
-## 10. Versão para Linux (Linux Mint) ✅ (primeira versão, falta testar no Mint)
+## 10. Versão para Linux (Linux Mint) ✅ (feito e testado no Mint)
 
 **Abordagem:** um **segundo projeto**, `Linux/CrankoHub.Linux.csproj`, com [Photino.Blazor](https://github.com/tryphotino/photino.Blazor) (janela nativa com WebKitGTK). O projeto Windows (WPF) continua exatamente como era. O projeto Linux compila **os mesmos arquivos** por link (`Pages/`, `Components/`, `Layout/`, `Models/`, `Services/`, `wwwroot/`) e só troca as partes exclusivas do Windows, que ficam em `Linux/Plataforma/` com o mesmo nome e API:
 
@@ -160,9 +163,31 @@ Os dados ficam em `~/.local/share/CrankoHub/dados.json`, e os backups do Windows
 - Para gerar o pacote manualmente: `dotnet publish Linux/CrankoHub.Linux.csproj -c Release -o out`.
 
 ### Falta / próximos passos
-- Testar de verdade no Mint: visual no WebKitGTK (fonte, `backdrop-filter`), arrastar cards das Tarefas, diálogos, notificações e atualização.
+- Testado no Mint com Cinnamon: instalação pelo Release e funcionamento geral OK.
 - Ícone na bandeja (AppIndicator), se fizer falta.
 - Os textos "Windows" em Configurações aparecem também no Linux.
+
+## 11. Repositório público e atualização automática sem token
+
+**Situação atual:** o atualizador (`Services/AtualizacaoService.cs` e `Linux/Plataforma/AtualizacaoService.cs`) consulta os Releases do repositório **privado** `DiegoOttani/MyProjs_`. Por isso o GitHub exige login, e cada usuário precisa criar um token e colar em **Configurações → Atualizações**. Para um app público, isso não serve.
+
+**Objetivo:** funcionar como o [ai-usagebar](https://github.com/akitaonrails/ai-usagebar). A pessoa baixa o app no GitHub, e ele mesmo avisa da versão nova e se atualiza com um botão, sem token nem configuração. Isso só funciona porque o repositório dele é **público**: a API de Releases e os downloads ficam abertos para qualquer um (até 60 consultas por hora por IP, de sobra para verificar uma vez por dia).
+
+**Plano (quando o CrankoHub for para um repositório próprio e público):**
+1. Criar o repositório público (ex.: `DiegoOttani/CrankoHub`) e mover para lá o código do CrankoHub e o workflow `crankohub-release.yml`, com as tags `crankohub-vX.Y.Z` (ou só `vX.Y.Z`).
+2. No `AtualizacaoService` (Windows e Linux):
+   - trocar a constante `Repositorio` pelo repositório novo;
+   - tirar a exigência do token em `Requisicao()`: sem `Authorization`;
+   - baixar o arquivo pelo `browser_download_url` do asset em vez de `releases/assets/{id}` com `Accept: application/octet-stream`;
+   - opcional: usar `releases/latest` em vez de listar 30 releases.
+3. Ligar "Verificar sozinho" por padrão (`Configuracoes.VerificarAtualizacoes`) e tirar a condição de token no `Iniciar()`.
+4. Em `Pages/Configuracoes.razor`: tirar o campo do token e o texto sobre "Fine-grained tokens"; o botão "Verificar atualizações" deixa de depender dele. O campo `TokenGitHub` em `Models/Configuracoes.cs` pode ficar, sem uso, para não quebrar backups antigos.
+5. Trocar o link em `EntretenimentoBusca.UserAgent` pelo endereço do repositório público.
+6. Opcional, para parecer mais com o ai-usagebar:
+   - item "Verificar atualizações" no menu da bandeja (`BandejaService`);
+   - clicar na notificação de versão nova abre direto a tela com o botão "Atualizar agora". Isso já funciona pelo link `configuracoes`.
+
+**O que já está pronto e não muda:** a lógica de comparar versões, baixar com progresso, trocar o `.exe` (Windows) ou a pasta (Linux) e reiniciar; o workflow que publica o `.exe` e o `.tar.gz` no mesmo Release.
 
 ## Pendências de teste do que já existe
 

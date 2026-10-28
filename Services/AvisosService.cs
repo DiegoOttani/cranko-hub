@@ -1,4 +1,5 @@
 using System.Windows.Threading;
+using CrankoHub.Models;
 
 namespace CrankoHub.Services;
 
@@ -62,6 +63,7 @@ public class AvisosService(ArmazenamentoService store, BackupService backup, Ban
     {
         const string chave = "tarefas:resumo";
         var cfg = store.Dados.Config;
+        if (!Modulo.Visivel(cfg, Modulo.Tarefas)) return;
         if (!manual && (DateTime.Now.Hour < HoraResumoTarefas || cfg.AvisosEnviados.TryGetValue(chave, out var dia) && dia == hoje)) return;
 
         var r = TarefasCalculos.ResumoDoDia(store.Dados.Tarefas, hoje);
