@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     {
         // Guarda os dados do WebView2 no perfil do usuário, e não ao lado do .exe
         // (que pode estar numa pasta sem permissão de escrita, como Program Files).
-        e.UserDataFolder = Path.Combine(ArmazenamentoService.PastaDados, "WebView2");
+        e.UserDataFolder = Path.Combine(ArmazenamentoService.PastaLocal, "WebView2");
     }
 
     // As capas do Entretenimento ficam numa pasta do usuário; o WebView as enxerga por um endereço próprio

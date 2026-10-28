@@ -22,6 +22,9 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
     /// <summary>Passado ao novo processo com o PID do antigo, para esperar ele fechar.</summary>
     public const string ArgAtualizado = "--atualizado";
 
+    /// <summary>Reinício pedido pelo próprio app (ex.: trocou a pasta dos dados): espera a versão atual fechar.</summary>
+    public const string ArgReiniciado = "--reiniciado";
+
     // Declarada antes do Http, que a usa no User-Agent (inicializadores estáticos rodam em ordem)
     public static Version VersaoAtual { get; } = Normalizar(Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(1, 0, 0));
 
@@ -110,6 +113,14 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
         System.Windows.Application.Current.Dispatcher.Invoke(() => ((App)System.Windows.Application.Current).Sair());
     }
 
+    /// <summary>Fecha e abre o app de novo.</summary>
+    public static void Reiniciar()
+    {
+        if (Environment.ProcessPath is not string exe) return;
+        Process.Start(new ProcessStartInfo(exe, $"{ArgReiniciado} {Environment.ProcessId}") { UseShellExecute = false });
+        System.Windows.Application.Current.Dispatcher.Invoke(() => ((App)System.Windows.Application.Current).Sair());
+    }
+
     /// <summary>Verifica sozinho uma vez por dia (logo depois de abrir e, com o app na bandeja, a cada 6 h).</summary>
     public void Iniciar()
     {
@@ -136,6 +147,10 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
     /// </summary>
     public static bool PrepararInicio(string[] args)
     {
+        var r = Array.IndexOf(args, ArgReiniciado);
+        if (r >= 0 && r + 1 < args.Length && int.TryParse(args[r + 1], out var anterior))
+            try { using var p = Process.GetProcessById(anterior); p.WaitForExit(15000); } catch { }
+
         var i = Array.IndexOf(args, ArgAtualizado);
         var atualizado = i >= 0;
         if (atualizado && i + 1 < args.Length && int.TryParse(args[i + 1], out var pid))

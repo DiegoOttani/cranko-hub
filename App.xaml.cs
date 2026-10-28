@@ -48,7 +48,7 @@ public partial class App : Application
         bandeja.AoSair += Sair;
 
         // Atualiza o caminho do .exe no registro, caso ele tenha mudado de lugar
-        if (store.Dados.Config.IniciarComWindows)
+        if (ConfigLocal.Atual.IniciarComWindows == true)
             try { InicializacaoWindows.Aplicar(true); } catch { }
 
         _janela = new MainWindow();

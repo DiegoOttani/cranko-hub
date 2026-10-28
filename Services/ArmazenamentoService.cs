@@ -12,10 +12,19 @@ namespace CrankoHub.Services;
 /// </summary>
 public class ArmazenamentoService
 {
-    public static readonly string PastaDados = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrankoHub");
+    /// <summary>Pasta deste computador (WebView, trava de instância, local.json).</summary>
+    public static readonly string PastaLocal = ConfigLocal.Pasta;
+
+    /// <summary>Pasta dos dados: a local ou uma sincronizada (se ainda existir). Muda só reiniciando o app.</summary>
+    public static readonly string PastaDados =
+        ConfigLocal.Atual.PastaDados is { } p && Directory.Exists(p) ? p : PastaLocal;
 
     public static readonly string CaminhoDados = Path.Combine(PastaDados, "dados.json");
+
+    public static bool Sincronizada => PastaDados != PastaLocal;
+
+    /// <summary>A pasta sincronizada escolhida não foi encontrada (ex.: OneDrive desconectado) e os dados locais estão em uso.</summary>
+    public static bool PastaSincronizadaSumiu => ConfigLocal.Atual.PastaDados is not null && !Sincronizada;
 
     // Mesmo formato (camelCase, datas "AAAA-MM-DD") do antigo app web, para os backups serem compatíveis
     private static readonly JsonSerializerOptions OpcoesJson = new()
@@ -34,9 +43,115 @@ public class ArmazenamentoService
     {
         _toast = toast;
         Dados = Carregar();
+
+        // "Iniciar com o Windows" era guardado nos dados; agora é de cada computador
+        var local = ConfigLocal.Atual;
+        if (local.IniciarComWindows is null)
+        {
+            local.IniciarComWindows = Dados.Config.IniciarComWindows;
+            try { local.Salvar(); } catch { }
+        }
+
+        if (Sincronizada) Vigiar();
     }
 
     public EstadoApp Dados { get; private set; }
+
+    // Data de modificação do dados.json da última vez que este app leu ou gravou
+    private DateTime _versaoNoDisco;
+    private FileSystemWatcher? _vigia;
+    private Timer? _espera;
+
+    /// <summary>O dados.json mudou por fora (o outro computador sincronizou). Quem ouve chama <see cref="Recarregar"/>.</summary>
+    public event Action? MudouPorFora;
+
+    private void Vigiar()
+    {
+        _vigia = new FileSystemWatcher(PastaDados, "dados.json") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
+        // O OneDrive grava em etapas: espera o arquivo parar de mudar
+        _espera = new Timer(_ =>
+        {
+            try { if (File.GetLastWriteTimeUtc(CaminhoDados) != _versaoNoDisco) MudouPorFora?.Invoke(); } catch { }
+        });
+        FileSystemEventHandler mudou = (_, _) => _espera.Change(1500, Timeout.Infinite);
+        _vigia.Changed += mudou;
+        _vigia.Created += mudou;
+        _vigia.Renamed += (_, _) => _espera.Change(1500, Timeout.Infinite);
+        _vigia.EnableRaisingEvents = true;
+    }
+
+    /// <summary>Lê de novo o dados.json. Retorna false se o arquivo estiver incompleto (ainda sincronizando).</summary>
+    public bool Recarregar()
+    {
+        try
+        {
+            var lido = File.GetLastWriteTimeUtc(CaminhoDados);
+            if (lido == _versaoNoDisco) return false;
+            var estado = JsonSerializer.Deserialize<EstadoApp>(File.ReadAllText(CaminhoDados), OpcoesJson);
+            if (estado is null) return false;
+            Dados = Normalizar(estado);
+            _versaoNoDisco = lido;
+            return true;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Cópias de conflito na pasta dos dados (nossas e as do OneDrive, ex.: "dados-PC-TRABALHO.json").</summary>
+    public static List<string> Conflitos()
+    {
+        try
+        {
+            return Directory.GetFiles(PastaDados, "dados*.json")
+                .Where(f => !string.Equals(Path.GetFileName(f), "dados.json", StringComparison.OrdinalIgnoreCase)
+                            && !Path.GetFileName(f).StartsWith("dados.antes-", StringComparison.OrdinalIgnoreCase))
+                .Order()
+                .ToList();
+        }
+        catch { return []; }
+    }
+
+    /// <summary>
+    /// Passa a usar uma pasta sincronizada. Se ela já tem dados (o outro PC), usa os de lá
+    /// e guarda os daqui como "dados.antes-sincronizar-*.json"; senão, leva os daqui para lá.
+    /// Depois é preciso reiniciar o app.
+    /// </summary>
+    public void UsarPasta(string pasta)
+    {
+        var destino = Path.Combine(pasta, "dados.json");
+        if (File.Exists(destino))
+            File.Copy(CaminhoDados, Path.Combine(PastaDados, $"dados.antes-sincronizar-{DateTime.Now:yyyyMMdd-HHmmss}.json"), overwrite: true);
+        else
+            File.WriteAllText(destino, JsonSerializer.Serialize(Dados, OpcoesJsonIndentado));
+        CopiarCapas(CapasService.Pasta, Path.Combine(pasta, "capas"));
+        ConfigLocal.Atual.PastaDados = pasta;
+        ConfigLocal.Atual.Salvar();
+    }
+
+    /// <summary>Traz os dados da pasta sincronizada de volta para este computador. Depois é preciso reiniciar o app.</summary>
+    public void VoltarParaLocal()
+    {
+        if (Sincronizada)
+        {
+            var local = Path.Combine(PastaLocal, "dados.json");
+            if (File.Exists(local))
+                File.Copy(local, Path.Combine(PastaLocal, $"dados.antes-sincronizar-{DateTime.Now:yyyyMMdd-HHmmss}.json"), overwrite: true);
+            File.WriteAllText(local, JsonSerializer.Serialize(Dados, OpcoesJsonIndentado));
+            CopiarCapas(CapasService.Pasta, Path.Combine(PastaLocal, "capas"));
+        }
+        ConfigLocal.Atual.PastaDados = null;
+        ConfigLocal.Atual.Salvar();
+    }
+
+    private static void CopiarCapas(string de, string para)
+    {
+        if (!Directory.Exists(de) || Path.GetFullPath(de) == Path.GetFullPath(para)) return;
+        Directory.CreateDirectory(para);
+        foreach (var f in Directory.GetFiles(de))
+        {
+            var alvo = Path.Combine(para, Path.GetFileName(f));
+            if (!File.Exists(alvo)) File.Copy(f, alvo);
+        }
+    }
 
     /// <summary>Avisa o menu quando um módulo é mostrado ou escondido.</summary>
     public event Action? ModulosMudaram;
@@ -66,10 +181,18 @@ public class ArmazenamentoService
         try
         {
             Directory.CreateDirectory(PastaDados);
+            // O outro computador mudou o arquivo e ainda não recarregamos: guarda a versão dele antes de sobrescrever
+            if (Sincronizada && File.Exists(CaminhoDados) && File.GetLastWriteTimeUtc(CaminhoDados) != _versaoNoDisco)
+            {
+                var copia = Path.Combine(PastaDados, $"dados.conflito-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+                File.Copy(CaminhoDados, copia, overwrite: true);
+                _toast.Erro($"Os dados foram mudados em outro computador ao mesmo tempo. A versão de lá foi guardada em {Path.GetFileName(copia)}.");
+            }
             // Grava num arquivo temporário e troca no final, para nunca deixar o arquivo pela metade
             var temporario = CaminhoDados + ".tmp";
             File.WriteAllText(temporario, JsonSerializer.Serialize(Dados, OpcoesJsonIndentado));
             File.Move(temporario, CaminhoDados, overwrite: true);
+            _versaoNoDisco = File.GetLastWriteTimeUtc(CaminhoDados);
         }
         catch (Exception ex)
         {
@@ -129,6 +252,7 @@ public class ArmazenamentoService
         {
             if (File.Exists(CaminhoDados))
             {
+                _versaoNoDisco = File.GetLastWriteTimeUtc(CaminhoDados);
                 var estado = JsonSerializer.Deserialize<EstadoApp>(File.ReadAllText(CaminhoDados), OpcoesJson);
                 if (estado is not null)
                     return Normalizar(estado);

@@ -75,7 +75,7 @@
 </section>
 
 <section class="card">
-    <div class="card-head"><div><h2>Armazenamento</h2><p>@ArmazenamentoService.CaminhoDados</p></div></div>
+    <div class="card-head"><div><h2>Armazenamento</h2><p>@ArmazenamentoService.CaminhoDados@(ArmazenamentoService.Sincronizada ? " · sincronizada" : "")</p></div></div>
     <div class="storage-stats">
         <div><span>Registros de peso</span><b>@d.Dieta.Registros.Count</b></div>
         <div><span>Abastecimentos</span><b>@d.Carro.Abastecimentos.Count</b></div>
@@ -86,6 +86,34 @@
         <div><span>Entretenimento</span><b>@d.Entretenimento.Count</b></div>
         <div><span>Tarefas</span><b>@d.Tarefas.Cards.Count</b></div>
         <div><span>Tamanho</span><b>@Num(Store.TamanhoKB(), 1) KB</b></div>
+    </div>
+    <div class="sincronia">
+        <h3>Usar em mais de um computador</h3>
+        @if (ArmazenamentoService.Sincronizada)
+        {
+            <p class="muted">Os dados estão numa <b>pasta sincronizada</b>. Os outros computadores que apontarem para ela veem as mesmas informações, e mudanças feitas lá aparecem aqui sozinhas.</p>
+        }
+        else
+        {
+            <p class="muted">Escolha uma pasta do <b>OneDrive</b>, <b>Google Drive</b> ou <b>Dropbox</b> (ex.: <code>OneDrive\CrankoHub</code>) e faça o mesmo no outro computador. Evite usar os dois ao mesmo tempo: se acontecer, nada se perde, a outra versão fica guardada como cópia de conflito.</p>
+        }
+        @if (ArmazenamentoService.PastaSincronizadaSumiu)
+        {
+            <p class="aviso-sincronia">A pasta sincronizada <b>@ConfigLocal.Atual.PastaDados</b> não foi encontrada, então os dados locais estão em uso. Confira se o OneDrive/Google Drive está conectado e reinicie o app.</p>
+        }
+        @{ var conflitos = ArmazenamentoService.Conflitos(); }
+        @if (conflitos.Count > 0)
+        {
+            <p class="aviso-sincronia">@conflitos.Count @Plural(conflitos.Count, "cópia", "cópias") de conflito na pasta (@string.Join(", ", conflitos.Select(Path.GetFileName))). Confira se falta algo e, se quiser, importe pelo backup abaixo; depois pode apagar.</p>
+        }
+        <div class="form-actions">
+            <button class="btn" type="button" @onclick="UsarPastaSincronizada">@(ArmazenamentoService.Sincronizada ? "Trocar pasta…" : "Usar pasta sincronizada…")</button>
+            @if (ArmazenamentoService.Sincronizada || ArmazenamentoService.PastaSincronizadaSumiu)
+            {
+                <button class="btn" type="button" @onclick="VoltarParaLocal">Voltar para a pasta local</button>
+            }
+            <button class="btn" type="button" @onclick="AbrirPastaDados">Abrir pasta</button>
+        </div>
     </div>
 </section>
 
@@ -138,7 +166,7 @@
     <div class="opcoes">
         <label class="check"><input type="checkbox" checked="@cfg.MinimizarParaBandeja" @onchange="@(e => Mudar(e, v => cfg.MinimizarParaBandeja = v))"> Ao fechar a janela, continuar rodando na bandeja</label>
         <label class="check"><input type="checkbox" checked="@cfg.Avisos" @onchange="@(e => Mudar(e, v => cfg.Avisos = v))"> Mostrar notificações (manutenção, documentos, assinaturas, peso, backup)</label>
-        <label class="check"><input type="checkbox" checked="@cfg.IniciarComWindows" @onchange="MudarInicioWindows"> Iniciar com o Windows (abre direto na bandeja)</label>
+        <label class="check"><input type="checkbox" checked="@(ConfigLocal.Atual.IniciarComWindows == true)" @onchange="MudarInicioWindows"> Iniciar com o Windows (abre direto na bandeja)</label>
     </div>
     <div class="form-actions">
         <button class="btn" type="button" @onclick="() => Avisos.Verificar(manual: true)">Testar notificação</button>
@@ -312,8 +340,8 @@
         try
         {
             InicializacaoWindows.Aplicar(ligado);
-            Store.Dados.Config.IniciarComWindows = ligado;
-            Store.Salvar();
+            ConfigLocal.Atual.IniciarComWindows = ligado;
+            ConfigLocal.Atual.Salvar();
         }
         catch (Exception ex)
         {
@@ -340,6 +368,46 @@
         cfg.UltimoBackup = null; // pasta nova: faz o primeiro backup nela
         Store.Salvar();
         Backup.ExecutarSeNecessario();
+    }
+
+    private async Task UsarPastaSincronizada()
+    {
+        var pasta = Dialogo.EscolherPasta("Pasta sincronizada para os dados (OneDrive, Google Drive...)", ConfigLocal.Atual.PastaDados);
+        if (pasta is null || Path.GetFullPath(pasta) == Path.GetFullPath(ArmazenamentoService.PastaDados)) return;
+        var temDados = File.Exists(Path.Combine(pasta, "dados.json"));
+        var pergunta = temDados
+            ? "Usar os dados que já estão nessa pasta?\nEla já tem dados do CrankoHub (de outro computador). Eles passam a ser usados aqui, e os dados atuais deste computador ficam guardados como cópia. O app vai reiniciar."
+            : "Levar os dados para essa pasta?\nOs dados e as capas deste computador são copiados para lá, e o app passa a usá-los. Faça o mesmo no outro computador. O app vai reiniciar.";
+        if (!await Dialogo.Confirmar(pergunta)) return;
+        try
+        {
+            Store.UsarPasta(pasta);
+            AtualizacaoService.Reiniciar();
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível usar a pasta: {ex.Message}");
+        }
+    }
+
+    private async Task VoltarParaLocal()
+    {
+        if (!await Dialogo.Confirmar("Voltar a guardar os dados só neste computador?\nOs dados atuais são copiados para a pasta local. A pasta sincronizada não é apagada. O app vai reiniciar.")) return;
+        try
+        {
+            Store.VoltarParaLocal();
+            AtualizacaoService.Reiniciar();
+        }
+        catch (Exception ex)
+        {
+            Toast.Erro($"Não foi possível voltar para a pasta local: {ex.Message}");
+        }
+    }
+
+    private void AbrirPastaDados()
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ArmazenamentoService.PastaDados) { UseShellExecute = true }); }
+        catch (Exception ex) { Toast.Erro($"Não foi possível abrir a pasta: {ex.Message}"); }
     }
 
     private void MudarMantidos(ChangeEventArgs e)

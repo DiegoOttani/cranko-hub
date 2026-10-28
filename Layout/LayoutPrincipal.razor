@@ -6,6 +6,7 @@
 @inject BackupService Backup
 @inject NavegacaoService Navegacao
 @inject JanelaService Janela
+@inject ToastService Toast
 
 <div class="app @(_menuAberto ? "menu-open" : "")">
     <aside class="sidebar">
@@ -33,7 +34,7 @@
             <button class="icon-btn" aria-label="Alternar tema claro/escuro" title="Alternar tema" @onclick="AlternarTema">@Icones.Lua@Icones.Sol</button>
         </header>
         @* A chave recria o container a cada navegação, reiniciando a animação de entrada *@
-        <main class="content enter" @key="_caminho">
+        <main class="content enter" @key="(_caminho, _recarregados)">
             @Body
         </main>
     </div>
@@ -63,9 +64,21 @@
         Nav.LocationChanged += AoNavegar;
         Navegacao.AoNavegar += AbrirPagina;
         Store.ModulosMudaram += AtualizarMenu;
+        Store.MudouPorFora += RecarregarDados;
     }
 
     private void AtualizarMenu() => _ = InvokeAsync(StateHasChanged);
+
+    // O outro computador sincronizou: relê os dados e recria a página aberta (descarta edições em andamento)
+    private int _recarregados;
+
+    private void RecarregarDados() => _ = InvokeAsync(() =>
+    {
+        if (!Store.Recarregar()) return;
+        _recarregados++;
+        StateHasChanged();
+        Toast.Ok("Dados atualizados de outro computador.");
+    });
 
     // Pedido vindo de fora do Blazor (ex.: clique numa notificação)
     private void AbrirPagina(string link) => _ = InvokeAsync(() => Nav.NavigateTo(link));
@@ -101,5 +114,6 @@
         Nav.LocationChanged -= AoNavegar;
         Navegacao.AoNavegar -= AbrirPagina;
         Store.ModulosMudaram -= AtualizarMenu;
+        Store.MudouPorFora -= RecarregarDados;
     }
 }

@@ -10,9 +10,9 @@ using Photino.Blazor;
 var atualizado = AtualizacaoService.PrepararInicio(args);
 
 // Uma instância só: se já estiver aberto, avisa e sai
-Directory.CreateDirectory(ArmazenamentoService.PastaDados);
+Directory.CreateDirectory(ArmazenamentoService.PastaLocal);
 FileStream trava;
-try { trava = new FileStream(Path.Combine(ArmazenamentoService.PastaDados, "instancia.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+try { trava = new FileStream(Path.Combine(ArmazenamentoService.PastaLocal, "instancia.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
 catch (IOException)
 {
     Notificacao.Enviar("CrankoHub", "O CrankoHub já está aberto.");
@@ -60,7 +60,7 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 
 var store = app.Services.GetRequiredService<ArmazenamentoService>();
 // Atualiza o caminho do executável no autostart, caso ele tenha mudado de lugar
-if (store.Dados.Config.IniciarComWindows)
+if (ConfigLocal.Atual.IniciarComWindows == true)
     try { InicializacaoWindows.Aplicar(true); } catch { }
 app.Services.GetRequiredService<AvisosService>().Iniciar();
 app.Services.GetRequiredService<AtualizacaoService>().Iniciar();

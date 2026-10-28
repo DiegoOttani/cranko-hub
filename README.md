@@ -189,6 +189,27 @@ Os dados ficam em `~/.local/share/CrankoHub/dados.json`, e os backups do Windows
 
 **O que já está pronto e não muda:** a lógica de comparar versões, baixar com progresso, trocar o `.exe` (Windows) ou a pasta (Linux) e reiniciar; o workflow que publica o `.exe` e o `.tar.gz` no mesmo Release.
 
+## 12. Usar em mais de um computador ✅ (feito, falta testar com dois PCs)
+
+**Abordagem:** pasta sincronizada (OneDrive, Google Drive, Dropbox), sem servidor e sem login. Cada pessoa usa a própria nuvem, então funciona igual no app público, sem custo nem dados de terceiros com a gente.
+
+- Configurações → Armazenamento → **"Usar pasta sincronizada…"**. Se a pasta já tem um `dados.json` (o outro PC), o app usa os dados de lá e guarda os daqui como `dados.antes-sincronizar-*.json`. Se não tem, copia os dados e as `capas/` para lá. Depois o app reinicia.
+- A pasta escolhida fica em `%LocalAppData%\CrankoHub\local.json`, que é de cada PC. "Iniciar com o Windows" também passou para lá, para não ligar sozinho no outro PC. WebView2 e a trava de instância continuam na pasta local.
+- Com o app aberto, um `FileSystemWatcher` percebe quando o outro PC sincronizou. O app recarrega os dados, recria a página aberta e mostra um toast.
+- **Conflito:** se o arquivo mudou por fora e o app vai salvar antes de recarregar, a versão de fora vira `dados.conflito-*.json` e nada se perde. Configurações lista essas cópias, inclusive as do OneDrive (`dados-NOMEDOPC.json`).
+- Se a pasta sincronizada não existir ao abrir (ex.: OneDrive desconectado), o app usa os dados locais e avisa em Configurações.
+- "Voltar para a pasta local" copia os dados de volta e não apaga a pasta sincronizada.
+- Limitação: usar os dois PCs **ao mesmo tempo** não junta as mudanças. A última gravação vale, e a outra fica como cópia de conflito.
+
+### Futuro (só se tiver versão celular/web): servidor com login
+- Ex.: Supabase (Postgres + autenticação pronta), com a senha guardada com hash (Argon2/bcrypt) pelo próprio serviço, nunca no app.
+- Ganhos: sincronização de verdade, inclusive no celular, e login com e-mail.
+- Riscos e custos:
+  - Os dados sairiam do JSON único para tabelas, e cada tela teria que salvar no servidor.
+  - Precisaria de cópia offline e de juntar as mudanças.
+  - Os dados de saúde, gastos e documentos ficariam sob nossa responsabilidade (LGPD, vazamentos, regras de acesso).
+  - Custo se crescer.
+
 ## Pendências de teste do que já existe
 
 - **Iniciar com o Windows** (Configurações → Aplicativo): conferir se a entrada aparece em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` e se o app abre na bandeja ao ligar o PC.

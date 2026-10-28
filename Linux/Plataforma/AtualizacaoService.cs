@@ -22,6 +22,9 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
 
     public const string ArgAtualizado = "--atualizado";
 
+    /// <summary>Reinício pedido pelo próprio app (ex.: trocou a pasta dos dados): espera a versão atual fechar.</summary>
+    public const string ArgReiniciado = "--reiniciado";
+
     public static Version VersaoAtual { get; } = Normalizar(Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(1, 0, 0));
 
     private static readonly HttpClient Http = CriarHttp();
@@ -116,6 +119,14 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
         DialogoService.Janela?.Close();
     }
 
+    /// <summary>Fecha e abre o app de novo.</summary>
+    public static void Reiniciar()
+    {
+        if (Environment.ProcessPath is not string exe) return;
+        Process.Start(new ProcessStartInfo(exe, $"{ArgReiniciado} {Environment.ProcessId}") { UseShellExecute = false });
+        DialogoService.Janela?.Close();
+    }
+
     public void Iniciar()
     {
         _timer = new Timer(async _ =>
@@ -135,6 +146,10 @@ public class AtualizacaoService(ArmazenamentoService store, BandejaService bande
     /// <summary>Depois de uma atualização: espera a versão antiga fechar e apaga a pasta antiga.</summary>
     public static bool PrepararInicio(string[] args)
     {
+        var r = Array.IndexOf(args, ArgReiniciado);
+        if (r >= 0 && r + 1 < args.Length && int.TryParse(args[r + 1], out var anterior))
+            try { using var p = Process.GetProcessById(anterior); p.WaitForExit(15000); } catch { }
+
         var i = Array.IndexOf(args, ArgAtualizado);
         var atualizado = i >= 0;
         if (atualizado && i + 1 < args.Length && int.TryParse(args[i + 1], out var pid))

@@ -442,6 +442,10 @@ tr.inativa td b { color: var(--text-2); font-weight: 600; }
 /* ===== Dados: backup automático ===== */
 .linha-pasta { display: flex; gap: 8px; }
 .linha-pasta input { flex: 1; min-width: 0; }
+.sincronia { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.sincronia h3 { font-size: 15px; margin-bottom: 4px; }
+.sincronia .form-actions { margin-top: 12px; }
+.aviso-sincronia { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--serious-bg); }
 .field > b { height: 38px; display: flex; align-items: center; }
 
 /* ===== Início: precisa de atenção ===== */
