@@ -74,6 +74,7 @@
         <div><span>Veículos</span><b>@d.Carro.Veiculos.Count</b></div>
         <div><span>Assinaturas</span><b>@d.Assinaturas.Count</b></div>
         <div><span>Entretenimento</span><b>@d.Entretenimento.Count</b></div>
+        <div><span>Tarefas</span><b>@d.Tarefas.Cards.Count</b></div>
         <div><span>Tamanho</span><b>@Num(Store.TamanhoKB(), 1) KB</b></div>
     </div>
 </section>
@@ -379,10 +380,10 @@
     private async Task CarregarExemplo()
     {
         var d = Store.Dados;
-        var temDados = d.Dieta.Registros.Count > 0 || d.Carro.Abastecimentos.Count > 0 || d.Carro.Manutencoes.Count > 0 || d.Assinaturas.Count > 0 || d.Entretenimento.Count > 0;
+        var temDados = d.Dieta.Registros.Count > 0 || d.Carro.Abastecimentos.Count > 0 || d.Carro.Manutencoes.Count > 0 || d.Assinaturas.Count > 0 || d.Entretenimento.Count > 0 || d.Tarefas.Cards.Count > 0;
         if (temDados && !await Dialogo.Confirmar("Carregar os dados de exemplo?\nIsso vai substituir seus dados atuais.")) return;
         Store.CarregarExemplo();
-        Toast.Ok("Dados de exemplo carregados. Dê uma olhada em Dieta, Carro, Assinaturas e Entretenimento!");
+        Toast.Ok("Dados de exemplo carregados. Dê uma olhada em Dieta, Carro, Assinaturas, Entretenimento e Tarefas!");
     }
 
     private async Task ApagarTudo()

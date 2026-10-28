@@ -31,3 +31,8 @@ window.crankohub = {
 
   focar(el) { el?.focus(); el?.select?.(); },
 };
+
+// Enter em campos marcados com data-sem-enviar (ex.: novo item do checklist) não envia o formulário
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.closest?.('[data-sem-enviar]')) e.preventDefault();
+}, true);

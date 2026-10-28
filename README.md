@@ -124,9 +124,12 @@ Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes 
 - Remédios com horário (notificação pela bandeja), consultas e exames com data.
 - Resultados de exames ao longo do tempo (ex.: colesterol, glicemia) em gráfico de linha.
 
-## 8. Lista de tarefas
+## 8. Lista de tarefas ✅ (feito)
 
-- Modulo para adicionar tarefas do dia a dia, como coisas do trabalho, com data de entrega, prioridade, etc. E ao concluir a tarefa, marcar como concluida. E no final do dia, mostrar um resumo das tarefas concluidas e das que não foram concluidas.
+- Página **Tarefas** com quadros estilo Kanban (Trabalho, Faculdade, Pessoal, Setup... o usuário cria os seus, com emoji).
+- Cada quadro tem colunas (padrão *A fazer / Fazendo / Feito*; a última conta como concluída) e cards arrastáveis com prazo, prioridade, etiquetas, descrição e checklist.
+- Visão **Hoje** junta, de todos os quadros, o que vence hoje, está atrasado ou foi marcado como foco (☆).
+- Resumo do dia no Início, tarefas atrasadas nos alertas e, a partir das 20h, uma notificação com o que foi concluído e o que ficou pendente.
 
 ## 9. Melhoria na configurações
 

@@ -19,6 +19,8 @@ public class EstadoApp
 
     public List<ItemEntretenimento> Entretenimento { get; set; } = [];
 
+    public DadosTarefas Tarefas { get; set; } = new();
+
     public Configuracoes Config { get; set; } = new();
 }
 

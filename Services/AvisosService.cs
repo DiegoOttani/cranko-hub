@@ -29,6 +29,7 @@ public class AvisosService(ArmazenamentoService store, BackupService backup, Ban
         if (!cfg.Avisos && !manual) return;
 
         var hoje = Formatacao.Hoje;
+        ResumoDasTarefas(hoje, manual);
         var alertas = Alertas.Gerar(store.Dados, hoje)
             .Where(a => manual || !cfg.AvisosEnviados.TryGetValue(a.Chave, out var dia) || dia != hoje)
             .ToList();
@@ -50,6 +51,29 @@ public class AvisosService(ArmazenamentoService store, BackupService backup, Ban
             cfg.AvisosEnviados.Remove(chave);
         foreach (var a in alertas)
             cfg.AvisosEnviados[a.Chave] = hoje;
+        store.Salvar();
+    }
+
+    /// <summary>Hora a partir da qual sai o resumo do dia das tarefas.</summary>
+    public const int HoraResumoTarefas = 20;
+
+    // À noite, uma vez por dia: o que foi feito e o que ficou pendente
+    private void ResumoDasTarefas(DateOnly hoje, bool manual)
+    {
+        const string chave = "tarefas:resumo";
+        var cfg = store.Dados.Config;
+        if (!manual && (DateTime.Now.Hour < HoraResumoTarefas || cfg.AvisosEnviados.TryGetValue(chave, out var dia) && dia == hoje)) return;
+
+        var r = TarefasCalculos.ResumoDoDia(store.Dados.Tarefas, hoje);
+        var pendentes = r.ParaHoje.Count + r.Atrasados.Count;
+        if (r.ConcluidosHoje.Count + pendentes == 0) return;
+
+        bandeja.Notificar($"Resumo do dia: {r.ConcluidosHoje.Count} {Formatacao.Plural(r.ConcluidosHoje.Count, "tarefa concluída", "tarefas concluídas")}",
+            pendentes == 0 ? "Nada ficou para trás. Bom trabalho!" :
+                $"{pendentes} {Formatacao.Plural(pendentes, "ficou pendente", "ficaram pendentes")}:\n" +
+                string.Join("\n", r.Atrasados.Concat(r.ParaHoje).Take(3).Select(c => "• " + c.Titulo)) + (pendentes > 3 ? "\n..." : ""),
+            "tarefas?quadro=hoje");
+        cfg.AvisosEnviados[chave] = hoje;
         store.Salvar();
     }
 }

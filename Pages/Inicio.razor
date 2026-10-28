@@ -34,6 +34,7 @@
         .ToList();
 
     var alertas = Alertas.Gerar(d, Hoje);
+    var resumo = TarefasCalculos.ResumoDoDia(d.Tarefas, Hoje);
     var assinAtivas = d.Assinaturas.Where(a => a.Ativa).ToList();
     var custoAssin = assinAtivas.Sum(AssinaturasCalculos.PorMes);
     var proximasCobrancas = AssinaturasCalculos.CobrancasAte(assinAtivas, Hoje, 30);
@@ -132,6 +133,45 @@
                       Series="@([new SerieLinha("Consumo", "var(--series-1)", abs.Where(a => a.Data > corte).Select(a => new PontoLinha(a.Data, a.Kml)).ToList(), Markers: false, Area: true)])" />
     </a>
 </div>
+
+<a class="card link-card" href="tarefas?quadro=hoje">
+    <div class="link-head">
+        <span class="link-icon">@Icones.Tarefas</span>
+        <div><h2>Tarefas de hoje</h2><p>Resumo do dia em todos os quadros</p></div>
+        <span class="go">@Icones.Seta</span>
+    </div>
+    <div class="mini-stats">
+        <div><span>Concluídas hoje</span><b>@resumo.ConcluidosHoje.Count</b></div>
+        <div><span>Para hoje</span><b>@resumo.ParaHoje.Count</b></div>
+        <div><span>Atrasadas</span><b>@resumo.Atrasados.Count</b></div>
+    </div>
+    @{ var pendentesHoje = resumo.Atrasados.Concat(resumo.ParaHoje).Take(4).ToList(); }
+    @if (pendentesHoje.Count > 0)
+    {
+        <ul class="activity">
+            @foreach (var c in pendentesHoje)
+            {
+                var q = TarefasCalculos.QuadroDe(d.Tarefas, c);
+                <li>
+                    <div class="a-text">@c.Titulo<small>@(q is null ? "" : TarefasCalculos.NomeQuadro(q))</small></div>
+                    @if (c.Prazo is DateOnly p)
+                    {
+                        var (texto, classe) = TarefasCalculos.Prazo(p, Hoje);
+                        <span class="badge @classe">@texto</span>
+                    }
+                    else
+                    {
+                        <span class="badge">foco</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+    else
+    {
+        <div class="chart-empty"><span>@(resumo.ConcluidosHoje.Count > 0 ? "Tudo o que era para hoje está feito. ✓" : "Nenhuma tarefa para hoje.")</span></div>
+    }
+</a>
 
 <a class="card link-card" href="entretenimento">
     <div class="link-head">

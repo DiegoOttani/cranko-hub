@@ -66,6 +66,16 @@ public static class Alertas
                 Formatacao.DataBR(data), classe == "" ? "warning" : classe, "assinaturas", Icones.Assinaturas));
         }
 
+        // Tarefas atrasadas ou com prazo hoje
+        foreach (var c in d.Tarefas.Cards.Where(c => TarefasCalculos.Aberto(c) && c.Prazo <= hoje).OrderBy(c => c.Prazo))
+        {
+            var (texto, classe) = TarefasCalculos.Prazo(c.Prazo!.Value, hoje);
+            var q = TarefasCalculos.QuadroDe(d.Tarefas, c);
+            lista.Add(new($"tarefa:{c.Id}", c.Titulo,
+                $"{(q is null ? "" : TarefasCalculos.NomeQuadro(q) + " · ")}prioridade {PrioridadeTarefa.Buscar(c.Prioridade).Nome.ToLowerInvariant()}",
+                texto, classe, $"tarefas?quadro={c.QuadroId}", Icones.Tarefas));
+        }
+
         // Peso sem registro há muito tempo (só para quem já usa a Dieta)
         var ultimoPeso = d.Dieta.Registros.Count > 0 ? d.Dieta.Registros.Max(r => r.Data) : (DateOnly?)null;
         if (ultimoPeso is DateOnly up && hoje.DayNumber - up.DayNumber >= DiasSemPeso)

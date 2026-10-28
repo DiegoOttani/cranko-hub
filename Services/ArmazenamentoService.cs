@@ -134,9 +134,11 @@ public class ArmazenamentoService
     private static EstadoApp Novo()
     {
         var veiculo = new Veiculo { Id = NovoId(), Nome = "Meu carro" };
+        var quadro = TarefasCalculos.NovoQuadro("Pessoal", "🏠");
         return new EstadoApp
         {
             Carro = new DadosCarro { Veiculos = [veiculo], Ativo = veiculo.Id },
+            Tarefas = new DadosTarefas { Quadros = [quadro], Ativo = quadro.Id },
         };
     }
 
@@ -173,6 +175,34 @@ public class ArmazenamentoService
         foreach (var x in s.Carro.Documentos.Where(x => string.IsNullOrEmpty(x.Id))) x.Id = NovoId();
         foreach (var a in s.Assinaturas.Where(a => string.IsNullOrEmpty(a.Id))) a.Id = NovoId();
         foreach (var e in s.Entretenimento.Where(e => string.IsNullOrEmpty(e.Id))) e.Id = NovoId();
+
+        // Tarefas: backups antigos não têm; sempre deixa pelo menos um quadro com colunas
+        var t = s.Tarefas ??= new DadosTarefas();
+        t.Quadros ??= [];
+        t.Quadros.RemoveAll(q => q is null);
+        foreach (var q in t.Quadros)
+        {
+            if (string.IsNullOrEmpty(q.Id)) q.Id = NovoId();
+            q.Colunas ??= [];
+            q.Colunas.RemoveAll(c => c is null);
+            foreach (var c in q.Colunas.Where(c => string.IsNullOrEmpty(c.Id))) c.Id = NovoId();
+            if (q.Colunas.Count == 0) q.Colunas = TarefasCalculos.NovoQuadro(q.Nome).Colunas;
+        }
+        if (t.Quadros.Count == 0)
+            t.Quadros.Add(TarefasCalculos.NovoQuadro("Pessoal", "🏠"));
+        if (t.Ativo != Quadro.Hoje && t.Quadros.All(q => q.Id != t.Ativo))
+            t.Ativo = t.Quadros[0].Id;
+        t.Cards ??= [];
+        t.Cards.RemoveAll(c => c is null || t.Quadros.All(q => q.Id != c.QuadroId));
+        foreach (var c in t.Cards)
+        {
+            if (string.IsNullOrEmpty(c.Id)) c.Id = NovoId();
+            c.Etiquetas ??= [];
+            c.Checklist ??= [];
+            c.Checklist.RemoveAll(i => i is null);
+            var q = t.Quadros.First(q => q.Id == c.QuadroId);
+            if (q.Colunas.All(col => col.Id != c.ColunaId)) c.ColunaId = q.Colunas[0].Id;
+        }
         return s;
     }
 
@@ -284,6 +314,34 @@ public class ArmazenamentoService
             Ent("jogo", "Hollow Knight", 2017, 120, 5, criadores: "Team Cherry"),
             Ent("jogo", "Elden Ring", 2022, null, null, "quero", "FromSoftware"),
             Ent("livro", "Projeto Hail Mary", 2021, 45, 4.5, criadores: "Andy Weir"),
+        ];
+
+        var trabalho = TarefasCalculos.NovoQuadro("Trabalho", "💼");
+        var faculdade = TarefasCalculos.NovoQuadro("Faculdade", "🎓");
+        var setup = TarefasCalculos.NovoQuadro("Setup", "🖥️");
+        s.Tarefas = new DadosTarefas { Quadros = [trabalho, faculdade, setup], Ativo = trabalho.Id };
+        var ordem = 0;
+        CardTarefa Card(Quadro q, int coluna, string titulo, int? prazo = null, string prioridade = "media", int? concluido = null,
+            string[]? etiquetas = null, (string Texto, bool Feito)[]? checklist = null, bool foco = false) => new()
+        {
+            Id = NovoId(), QuadroId = q.Id, ColunaId = q.Colunas[coluna].Id, Titulo = titulo, Ordem = ordem++,
+            Prazo = prazo is int p ? hoje.AddDays(p) : null, Prioridade = prioridade, Foco = foco, Criado = Dia(10),
+            Concluido = concluido is int c ? Dia(c) : null, Etiquetas = [.. etiquetas ?? []],
+            Checklist = [.. (checklist ?? []).Select(i => new ItemChecklist { Texto = i.Texto, Feito = i.Feito })],
+        };
+        s.Tarefas.Cards =
+        [
+            Card(trabalho, 0, "Enviar relatório mensal", 0, "alta", etiquetas: ["relatório"]),
+            Card(trabalho, 0, "Revisar proposta do cliente", 3, etiquetas: ["cliente"]),
+            Card(trabalho, 0, "Responder e-mails pendentes", -1, "baixa"),
+            Card(trabalho, 1, "Apresentação da reunião de sexta", 2, "alta", checklist: [("Levantar números", true), ("Montar slides", false), ("Ensaiar", false)]),
+            Card(trabalho, 2, "Atualizar planilha de custos", prioridade: "baixa", concluido: 0),
+            Card(faculdade, 0, "Lista de exercícios de cálculo", 5, etiquetas: ["cálculo"]),
+            Card(faculdade, 1, "Trabalho em grupo de engenharia de software", 9, "alta", checklist: [("Dividir tarefas", true), ("Escrever introdução", false)]),
+            Card(faculdade, 2, "Prova de estatística", prioridade: "alta", concluido: 6),
+            Card(setup, 0, "Comprar monitor 27\"", etiquetas: ["compra"]),
+            Card(setup, 0, "Organizar cabos da mesa", prioridade: "baixa", foco: true, checklist: [("Comprar velcro", false), ("Suporte de cabos", false)]),
+            Card(setup, 2, "Cadeira ergonômica", concluido: 20, etiquetas: ["compra"]),
         ];
         return s;
     }
