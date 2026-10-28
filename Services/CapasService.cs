@@ -12,7 +12,10 @@ public class CapasService(HttpClient http)
 
     public const string Host = "capas.crankohub";
 
-    public static string? Url(string? arquivo) => string.IsNullOrEmpty(arquivo) ? null : $"https://{Host}/{arquivo}";
+    /// <summary>Início do endereço das capas (a versão Linux serve a pasta em "capas/").</summary>
+    public static string Prefixo { get; set; } = $"https://{Host}/";
+
+    public static string? Url(string? arquivo) => string.IsNullOrEmpty(arquivo) ? null : Prefixo + arquivo;
 
     /// <summary>Baixa a imagem e devolve o nome do arquivo salvo (ou null se falhar).</summary>
     public async Task<string?> Baixar(string url)

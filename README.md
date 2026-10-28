@@ -136,52 +136,33 @@ Lista do que ainda vamos fazer no CrankoHub. Cada item tem detalhes suficientes 
 - Adicionar um modulo de plugin, onde é possivel escolher quais modulos vamos deixar visivel e quais não.
 - isso é util para nao deixar varias coisas inuteis na tela principal.
 
-## 10. Versão para Linux (Linux Mint)
+## 10. Versão para Linux (Linux Mint) ✅ (primeira versão, falta testar no Mint)
 
-**Situação atual:** o `CrankoHub.exe` **não roda no Linux**, nem pelo Wine de forma confiável. A janela é WPF com o `BlazorWebView` do WPF (WebView2), e o app usa APIs que só existem no Windows: o `NotifyIcon` do WinForms para a bandeja, o Registro, o `dwmapi.dll` e o `EventWaitHandle` nomeado.
+**Abordagem:** um **segundo projeto**, `Linux/CrankoHub.Linux.csproj`, com [Photino.Blazor](https://github.com/tryphotino/photino.Blazor) (janela nativa com WebKitGTK). O projeto Windows (WPF) continua exatamente como era. O projeto Linux compila **os mesmos arquivos** por link (`Pages/`, `Components/`, `Layout/`, `Models/`, `Services/`, `wwwroot/`) e só troca as partes exclusivas do Windows, que ficam em `Linux/Plataforma/` com o mesmo nome e API:
 
-**O que já é portável e fica igual:**
-- todas as telas `.razor` (`Pages/`, `Components/`, `Layout/`), o `wwwroot/` e os `Models/`;
-- a lógica em `Services/`: cálculos, `ArmazenamentoService`, `BackupService`, `CapasService`, `EntretenimentoBusca` e `Formatacao`;
-- os dados: `LocalApplicationData` vira `~/.local/share/CrankoHub` no Linux sem mudar nada.
+| Windows | Linux (`Linux/Plataforma/`) |
+|---|---|
+| Janela WPF (`App.xaml`, `MainWindow.xaml`) | `Linux/Program.cs` com `PhotinoBlazorAppBuilder` |
+| `BandejaService` (ícone na bandeja + balões) | Sem bandeja (fechar a janela encerra o app); notificações pelo `notify-send` |
+| `DialogoService` (diálogos do Windows) | Diálogos GTK do Photino |
+| `InicializacaoWindows` (Registro) | `~/.config/autostart/crankohub.desktop` |
+| `AtualizacaoService` (troca o `.exe`) | Baixa `CrankoHub-linux-x64.tar.gz`, extrai ao lado e troca a pasta |
+| `DispatcherTimer` do WPF (usado pelo `AvisosService`) | Substituto mínimo com `System.Threading.Timer` |
+| Mutex de instância única | Arquivo de trava em `~/.local/share/CrankoHub/instancia.lock` |
+| Capas em `https://capas.crankohub/` (WebView2) | Pasta das capas servida em `capas/` (`CapasService.Prefixo`) |
 
-**Abordagem recomendada: [Photino.Blazor](https://github.com/tryphotino/photino.Blazor).** É uma janela nativa leve que roda os mesmos componentes Blazor, com WebKitGTK no Linux e WebView2 no Windows. Ela substitui o WPF e deixa um projeto só para os dois sistemas, sem manter dois apps.
+Os dados ficam em `~/.local/share/CrankoHub/dados.json`, e os backups do Windows importam direto.
 
-### Partes exclusivas do Windows e o que entra no lugar
+### Publicação e instalação
+- O workflow `crankohub-release.yml` ganhou o job `linux`, que anexa o `CrankoHub-linux-x64.tar.gz` ao mesmo Release. O pacote é autossuficiente e não precisa instalar o .NET.
+- No Mint: extrair o `.tar.gz` e rodar `./instalar.sh`. Ele copia o app para `~/.local/share/CrankoHub/app` e cria o atalho no menu do Cinnamon.
+- Precisa do `libwebkit2gtk-4.1-0`, que já vem no Mint 21/22. O instalador avisa se faltar.
+- Para gerar o pacote manualmente: `dotnet publish Linux/CrankoHub.Linux.csproj -c Release -o out`.
 
-| Hoje (Windows) | Arquivo | Substituto multiplataforma |
-|---|---|---|
-| Janela WPF + `BlazorWebView`, cantos via `dwmapi`, tema lido do Registro | `App.xaml(.cs)`, `MainWindow.xaml(.cs)` | `Program.cs` com `PhotinoBlazorAppBuilder`; tema pelo `prefers-color-scheme` do CSS |
-| Ícone na bandeja (`NotifyIcon` do WinForms) | `Services/BandejaService.cs` | Linux: AppIndicator/StatusNotifier (o Cinnamon suporta). Dá para começar sem bandeja no Linux |
-| Notificações (balão da bandeja) | `BandejaService.Notificar` | Linux: `notify-send` ou D-Bus `org.freedesktop.Notifications` |
-| Diálogos de abrir/salvar/pasta | `Services/DialogoService.cs` | Diálogos do Photino (`ShowOpenFile`, `ShowSaveFile`, `ShowOpenFolder`) |
-| Iniciar com o Windows (chave `Run` do Registro) | `Services/InicializacaoWindows.cs` | Linux: arquivo `~/.config/autostart/crankohub.desktop` |
-| Instância única (`Mutex` + `EventWaitHandle` nomeado) | `App.xaml.cs` | Arquivo de trava + socket local para pedir que a janela apareça |
-| `DispatcherTimer` e `Application.Current` | `Services/AvisosService.cs`, `Services/AtualizacaoService.cs` | `PeriodicTimer` e encerramento pela janela do Photino |
-| Atualizador baixa e troca o `CrankoHub.exe` | `Services/AtualizacaoService.cs` | Escolher o arquivo do Release pelo sistema (`CrankoHub.exe` ou `CrankoHub-linux-x64`); no Linux, `chmod +x` depois de baixar |
-
-### Projeto e publicação
-- `CrankoHub.csproj`:
-  - `TargetFramework` passa a `net10.0`, sem `-windows` e sem `UseWPF`/`UseWindowsForms`;
-  - trocar o pacote `Microsoft.AspNetCore.Components.WebView.Wpf` por `Photino.Blazor`.
-- Código específico de cada sistema fica isolado com `OperatingSystem.IsWindows()` / `OperatingSystem.IsLinux()`.
-- Workflow `.github/workflows/crankohub-release.yml`: uma matriz `win-x64` + `linux-x64` anexando os dois arquivos ao mesmo Release.
-- No Mint:
-  - precisa do `libwebkit2gtk-4.1`, que já costuma vir no Cinnamon;
-  - distribuir o executável + um `.desktop` com ícone (opcional: AppImage).
-
-### Ordem sugerida
-Etapas pequenas, cada uma testável:
-1. Photino rodando as telas no Windows, no lugar do WPF.
-2. Trocar diálogos, timers e instância única.
-3. Publicar `linux-x64` e testar no Mint.
-4. Bandeja, notificações e iniciar com o sistema no Linux.
-5. Atualizador e workflow com os dois arquivos.
-
-### Riscos
-- O WebKitGTK pode desenhar alguns detalhes de forma diferente, como fontes e `backdrop-filter`. Revisar o visual no Mint.
-- A bandeja no Linux depende do ambiente gráfico. Funciona no Cinnamon, mas não em todos.
-- Manter a versão WPF publicando normalmente até a versão Photino estar estável.
+### Falta / próximos passos
+- Testar de verdade no Mint: visual no WebKitGTK (fonte, `backdrop-filter`), arrastar cards das Tarefas, diálogos, notificações e atualização.
+- Ícone na bandeja (AppIndicator), se fizer falta.
+- Os textos "Windows" em Configurações aparecem também no Linux.
 
 ## Pendências de teste do que já existe
 

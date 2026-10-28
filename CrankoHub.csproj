@@ -37,6 +37,13 @@
     <Using Remove="System.Drawing" />
   </ItemGroup>
 
+  <!-- A pasta Linux é outro projeto (versão Photino), que reaproveita estes arquivos -->
+  <ItemGroup>
+    <Compile Remove="Linux\**" />
+    <Content Remove="Linux\**" />
+    <None Remove="Linux\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.120" />
   </ItemGroup>
