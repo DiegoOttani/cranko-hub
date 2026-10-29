@@ -197,6 +197,31 @@ Os dados ficam em `~/.local/share/CrankoHub/dados.json`, e os backups do Windows
   - Os dados de saúde, gastos e documentos ficariam sob nossa responsabilidade (LGPD, vazamentos, regras de acesso).
   - Custo se crescer.
 
+## 13. Visual Frutiger Aero 🧪 (em teste no branch `layout-frutiger-aero`)
+
+**Ideia:** um visual no estilo **Frutiger Aero**, no clima do logo da Crankos Enterprises e do Aqua dos Macs antigos (Mac OS X 10.0–10.4), com céu, vidro, gel e bolhas. A ideia é que ele **não substitua** o visual atual. No futuro ele vai para o app principal como uma **opção em Configurações**, e o visual de hoje continua sendo o padrão.
+
+### O que já existe no branch
+- **`wwwroot/css/aero.css`:** carregado depois do `app.css` e só sobrescreve. Tirar o `<link>` dele do `index.html` volta ao visual atual.
+  - **Fundo:** céu com reflexo de sol, raios, nuvens e bolhas. No tema escuro vira um oceano azul-profundo.
+  - **Vidro fosco** (`backdrop-filter`): barra lateral, cartões, KPIs, diálogos, tooltips dos gráficos e colunas do Kanban.
+  - **Gel do Aqua:** botões em pílula, item ativo do menu, abas, chips e interruptores. Tudo usa a **cor de destaque** de Configurações (`--accent`), então a escolha do usuário continua valendo.
+  - **Detalhes de época:** barras de progresso com listras em movimento (desligadas com `prefers-reduced-motion`), tabelas com linhas alternadas e cabeçalho brilhante, barras de rolagem em gel e campos com sombra afundada.
+  - **Fonte:** Segoe UI, com Frutiger antes na lista caso esteja instalada.
+  - Os tokens do tema ficam no topo do arquivo, nas versões clara e escura (`--sky`, `--glass`, `--gloss`, `--face`, `--gel`...). O `--gel` é declarado em `*` para respeitar um `--accent` trocado localmente, como nos botões de perigo.
+- **Logo:** o brasão fica em `wwwroot/img/` em duas versões: `logo-96.png`, usado na barra lateral, e `logo-480.jpg`, usado no banner do Início. O recorte mostra só o globo, com `object-view-box`.
+- **`Layout/LayoutPrincipal.razor`:** o brasão substitui o ícone da marca, e o nome virou "**Cranko**" em azul e "**Hub**" em verde, como no letreiro do logo.
+- **`Pages/Inicio.razor`:** o banner ganhou o brasão à direita (`hero-logo`) e um anel verde de vidro. O texto agora fica dentro de `hero-texto`.
+- **Barra de título (WPF):** gradiente brilhante e "bolinhas" do semáforo com efeito de gel, em `MainWindow.xaml` e no `AplicarTema` do `MainWindow.xaml.cs`.
+
+### Próximo passo: trazer para o app principal com um botão em Configurações
+- **Modelo:** `Config.Visual` (string, `"padrao"` ou `"aero"`), opcional, para backups antigos continuarem importando. No `Normalizar`, valor vazio ou desconhecido vira `"padrao"`.
+- **Configurações → Aparência:** uma linha "Visual" com chips **Padrão / Frutiger Aero**, junto da cor de destaque. Trocar aplica na hora, sem reiniciar.
+- **CSS:** deixar o `<link id="visual-aero" href="css/aero.css" disabled>` no `index.html`. Uma função `crankohub.aplicarVisual(visual)` no `interop.js` liga e desliga o link e marca `data-visual` no `<html>`. Ela é chamada no `OnAfterRenderAsync` do layout, junto do `aplicarTema`/`aplicarDestaque`.
+- **Marcação:** o brasão na barra lateral e no banner do Início só aparece no visual Aero. No Padrão continua o ícone `Icones.Logo` e o banner sem imagem.
+- **Barra de título:** o `JanelaService` avisa a troca de visual, do mesmo jeito que já faz com `TemaMudou`. O `MainWindow` escolhe entre as cores lisas de hoje e o gradiente Aero, e entre as bolinhas lisas e as de gel. No Linux (Photino) a barra é a do sistema, então não há nada a fazer.
+- **Como testar:** alternar entre os visuais nos temas claro e escuro, com várias cores de destaque, em todas as páginas (Início, Dieta, Carro e suas abas, Assinaturas, Entretenimento, Tarefas, Configurações), nos diálogos de confirmação e nos toasts.
+
 ## Pendências de teste do que já existe
 
 - **Iniciar com o Windows** (Configurações → Aplicativo): conferir se a entrada aparece em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` e se o app abre na bandeja ao ligar o PC.
